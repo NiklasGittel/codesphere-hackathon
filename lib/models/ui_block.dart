@@ -51,6 +51,18 @@ sealed class UiBlock {
         return ActionsBlock.fromJson(json);
       case 'brief':
         return BriefBlock.fromJson(json);
+      case 'heatmap':
+        return HeatmapBlock.fromJson(json);
+      case 'waterfall':
+        return WaterfallBlock.fromJson(json);
+      case 'funnel':
+        return FunnelBlock.fromJson(json);
+      case 'timeline':
+        return TimelineBlock.fromJson(json);
+      case 'gauges':
+        return GaugesBlock.fromJson(json);
+      case 'followups':
+        return FollowUpsBlock.fromJson(json);
       default:
         return FindingBlock(
           title: 'Unknown component "$type"',
@@ -99,10 +111,14 @@ class StatsBlock extends UiBlock {
 // ----------------------------------------------------------- line chart ----
 
 class ChartSeries {
-  const ChartSeries({required this.name, required this.values, this.color});
+  const ChartSeries(
+      {required this.name, required this.values, this.color, this.dashedFrom});
   final String name;
   final List<double> values;
   final Color? color;
+
+  /// Index from which the line is drawn dashed (projection / forecast).
+  final int? dashedFrom;
 }
 
 class LineChartBlock extends UiBlock {
@@ -145,6 +161,7 @@ class LineChartBlock extends UiBlock {
                       .map((v) => _num(v))
                       .toList(),
                   color: _color(s['color']),
+                  dashedFrom: (s['dashed_from'] as num?)?.toInt(),
                 ))
             .toList(),
         threshold: (j['threshold'] as num?)?.toDouble(),
@@ -384,5 +401,225 @@ class BriefBlock extends UiBlock {
             .map((m) => BriefItem(
                 label: _str(m['label']) ?? '', text: _str(m['text']) ?? ''))
             .toList(),
+      );
+}
+
+// -------------------------------------------------------------- heatmap ----
+
+/// Grid of values, e.g. latency by region (rows) × hour (columns).
+class HeatmapBlock extends UiBlock {
+  const HeatmapBlock({
+    required this.title,
+    required this.xLabels,
+    required this.yLabels,
+    required this.values,
+    this.subtitle,
+    this.source,
+    this.unit = '',
+    this.threshold,
+  });
+  final String title;
+  final String? subtitle;
+  final String? source;
+  final String unit;
+  final List<String> xLabels;
+  final List<String> yLabels;
+  final List<List<double>> values;
+
+  /// Values above this are drawn in the "bad" colour range.
+  final double? threshold;
+
+  factory HeatmapBlock.fromJson(Map<String, dynamic> j) => HeatmapBlock(
+        title: _str(j['title']) ?? '',
+        subtitle: _str(j['subtitle']),
+        source: _str(j['source']),
+        unit: _str(j['unit']) ?? '',
+        xLabels: _strings(j['x_labels']),
+        yLabels: _strings(j['y_labels']),
+        values: (j['values'] as List? ?? const [])
+            .map((r) => (r as List).map(_num).toList())
+            .toList(),
+        threshold: (j['threshold'] as num?)?.toDouble(),
+      );
+}
+
+// ------------------------------------------------------------ waterfall ----
+
+class TraceSpan {
+  const TraceSpan({
+    required this.name,
+    required this.start,
+    required this.duration,
+    this.service,
+    this.provider,
+    this.depth = 0,
+    this.highlight = false,
+  });
+  final String name;
+  final String? service;
+  final String? provider;
+  final double start;
+  final double duration;
+  final int depth;
+  final bool highlight;
+}
+
+/// Distributed trace of a single request.
+class WaterfallBlock extends UiBlock {
+  const WaterfallBlock(
+      {required this.title, required this.spans, this.subtitle, this.source});
+  final String title;
+  final String? subtitle;
+  final String? source;
+  final List<TraceSpan> spans;
+
+  double get total => spans.fold<double>(
+      0, (m, s) => s.start + s.duration > m ? s.start + s.duration : m);
+
+  factory WaterfallBlock.fromJson(Map<String, dynamic> j) => WaterfallBlock(
+        title: _str(j['title']) ?? '',
+        subtitle: _str(j['subtitle']),
+        source: _str(j['source']),
+        spans: _maps(j['spans'])
+            .map((s) => TraceSpan(
+                  name: _str(s['name']) ?? '',
+                  service: _str(s['service']),
+                  provider: _str(s['provider']),
+                  start: _num(s['start']),
+                  duration: _num(s['duration']),
+                  depth: (s['depth'] as num?)?.toInt() ?? 0,
+                  highlight: s['highlight'] == true,
+                ))
+            .toList(),
+      );
+}
+
+// --------------------------------------------------------------- funnel ----
+
+class FunnelStep {
+  const FunnelStep({required this.label, required this.value, this.compare});
+  final String label;
+  final double value;
+  final double? compare;
+}
+
+class FunnelBlock extends UiBlock {
+  const FunnelBlock({
+    required this.title,
+    required this.steps,
+    this.subtitle,
+    this.source,
+    this.valueLabel = 'Today',
+    this.compareLabel,
+  });
+  final String title;
+  final String? subtitle;
+  final String? source;
+  final String valueLabel;
+  final String? compareLabel;
+  final List<FunnelStep> steps;
+
+  factory FunnelBlock.fromJson(Map<String, dynamic> j) => FunnelBlock(
+        title: _str(j['title']) ?? '',
+        subtitle: _str(j['subtitle']),
+        source: _str(j['source']),
+        valueLabel: _str(j['value_label']) ?? 'Today',
+        compareLabel: _str(j['compare_label']),
+        steps: _maps(j['steps'])
+            .map((s) => FunnelStep(
+                  label: _str(s['label']) ?? '',
+                  value: _num(s['value']),
+                  compare: (s['compare'] as num?)?.toDouble(),
+                ))
+            .toList(),
+      );
+}
+
+// ------------------------------------------------------------- timeline ----
+
+class TimelineEvent {
+  const TimelineEvent({
+    required this.time,
+    required this.title,
+    this.detail,
+    this.provider,
+    this.severity = Severity.info,
+  });
+  final String time;
+  final String title;
+  final String? detail;
+  final String? provider;
+  final Severity severity;
+}
+
+class TimelineBlock extends UiBlock {
+  const TimelineBlock({required this.title, required this.events, this.subtitle});
+  final String title;
+  final String? subtitle;
+  final List<TimelineEvent> events;
+
+  factory TimelineBlock.fromJson(Map<String, dynamic> j) => TimelineBlock(
+        title: _str(j['title']) ?? '',
+        subtitle: _str(j['subtitle']),
+        events: _maps(j['events'])
+            .map((e) => TimelineEvent(
+                  time: _str(e['time']) ?? '',
+                  title: _str(e['title']) ?? '',
+                  detail: _str(e['detail']),
+                  provider: _str(e['provider']),
+                  severity: parseSeverity(e['severity']),
+                ))
+            .toList(),
+      );
+}
+
+// --------------------------------------------------------------- gauges ----
+
+class GaugeItem {
+  const GaugeItem({
+    required this.label,
+    required this.value,
+    required this.display,
+    this.caption,
+    this.severity = Severity.info,
+  });
+  final String label;
+
+  /// Fill of the arc, 0..1.
+  final double value;
+  final String display;
+  final String? caption;
+  final Severity severity;
+}
+
+class GaugesBlock extends UiBlock {
+  const GaugesBlock({required this.items});
+  final List<GaugeItem> items;
+
+  factory GaugesBlock.fromJson(Map<String, dynamic> j) => GaugesBlock(
+        items: _maps(j['items'])
+            .map((g) => GaugeItem(
+                  label: _str(g['label']) ?? '',
+                  value: _num(g['value']).clamp(0, 1).toDouble(),
+                  display: _str(g['display']) ?? '',
+                  caption: _str(g['caption']),
+                  severity: parseSeverity(g['severity']),
+                ))
+            .toList(),
+      );
+}
+
+// ------------------------------------------------------------ follow-ups ----
+
+/// Suggested next questions, rendered as clickable chips.
+class FollowUpsBlock extends UiBlock {
+  FollowUpsBlock({required this.questions, this.title});
+  final String? title;
+  final List<String> questions;
+  final Set<String> asked = {};
+
+  factory FollowUpsBlock.fromJson(Map<String, dynamic> j) => FollowUpsBlock(
+        title: _str(j['title']),
+        questions: _strings(j['questions']),
       );
 }

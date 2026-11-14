@@ -20,6 +20,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _scroll = ScrollController();
   bool _forceScroll = false;
+  String? _nav = NavIds.overview;
 
   ChatController get c => widget.controller;
 
@@ -59,6 +60,44 @@ class _HomeScreenState extends State<HomeScreen> {
     c.send(title, actionId: actionId);
   }
 
+  /// Card clicked on the start page.
+  void _openFromStart(String title, String actionId) {
+    setState(() => _nav = actionId.startsWith('incident') ? NavIds.incidents : NavIds.savings);
+    _open(title, actionId);
+  }
+
+  void _newChat() {
+    c.reset();
+    setState(() => _nav = NavIds.overview);
+  }
+
+  /// Sidebar navigation. Every entry leads somewhere in the demo.
+  void _navigate(String id) {
+    const topics = {
+      NavIds.services: ('Service map', 'nav_services'),
+      NavIds.changes: ('What changed in production?', 'nav_changes'),
+      NavIds.costs: ('Cost explorer', 'nav_costs'),
+      'recent_checkout': ('Checkout is slow in West Europe', 'incident_checkout'),
+      'recent_costs': ('November cost review', 'nav_costs'),
+      'recent_changes': ('Production changes', 'nav_changes'),
+    };
+    if (id == NavIds.settings) {
+      setState(() => _nav = id);
+      return;
+    }
+    final topic = topics[id];
+    if (topic == null) {
+      // overview / incidents / savings live on the start page.
+      if (!c.busy) c.reset();
+      setState(() => _nav = id);
+      return;
+    }
+    if (c.busy) return;
+    c.reset();
+    setState(() => _nav = id);
+    _open(topic.$1, topic.$2);
+  }
+
   String? get _topic {
     if (c.messages.isEmpty) return null;
     final parts = c.messages.first.parts;
@@ -75,16 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ListenableBuilder(
                 listenable: c,
                 builder: (context, _) =>
-                    Sidebar(onNewChat: c.reset, overviewActive: c.messages.isEmpty),
+                    Sidebar(selected: _nav, onNavigate: _navigate, onNewChat: _newChat),
               ),
             if (wide) const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
             Expanded(
               child: ListenableBuilder(
                 listenable: c,
                 builder: (context, _) => Column(children: [
-                  _TopBar(topic: _topic, onBack: c.reset),
+                  _TopBar(topic: _topic, onBack: _newChat),
                   Expanded(
-                    child: c.messages.isEmpty ? StartPage(onOpen: _open) : _messages(),
+                    child: c.messages.isEmpty ? StartPage(onOpen: _openFromStart) : _messages(),
                   ),
                   Composer(busy: c.busy, onSend: _send, onStop: c.stop),
                 ]),
@@ -109,10 +148,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 28),
                   child: MessageView(
-                      key: ValueKey(m.id), message: m, onAction: (b, a) {
-                    _forceScroll = true;
-                    c.runAction(b, a);
-                  }),
+                    key: ValueKey(m.id),
+                    message: m,
+                    onAction: (b, a) {
+                      _forceScroll = true;
+                      c.runAction(b, a);
+                    },
+                    onAsk: (b, q) {
+                      _forceScroll = true;
+                      c.ask(b, q);
+                    },
+                  ),
                 ),
               ),
             );

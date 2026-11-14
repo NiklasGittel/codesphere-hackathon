@@ -18,6 +18,19 @@ flutter run -d chrome
 Try: "Why is my checkout slow?" → "Roll back…" → "Run rollback".
 Also: "Where can I cut cloud costs?", "What changed in the last 24h?".
 
+## Generative UI showcase
+
+Open the "Checkout is slow in West Europe" incident, then ask (or click the chips):
+
+| Question | Diagram it creates |
+|---|---|
+| Which regions are affected? | Heatmap: latency by region × hour (EU red, US East got faster) |
+| Show me the trace of a slow checkout | Trace waterfall: 3 sequential cross-Atlantic payment calls |
+| How does this affect conversion? | Funnel vs. last week: drop-off at the payment step |
+| What happened, step by step? | Incident timeline: deploy → spike → muted alert → root cause |
+| How much error budget have we burned? | SLO gauges + burn-down with dashed projection |
+| What if we don't fix this before Black Friday? | Revenue projection with/without fix + loss stats |
+
 ## Architecture
 
 ```
@@ -44,6 +57,15 @@ Agent → UI events: `StepStarted`, `StepCompleted`, `TextChunk`, `BlockEmitted`
 | `finding`    | `title, body (**bold**, \`code\`), severity, evidence[]?` |
 | `table`      | `title, subtitle?, columns[], rows[][], highlight_rows[]?` |
 | `actions`    | `title?, actions[{id, label, variant, icon?}]` |
+| `brief`      | `title, severity, badge?, items[{label, text}]` |
+| `heatmap`    | `title, subtitle?, source?, unit, threshold?, x_labels[], y_labels[], values[][]` |
+| `waterfall`  | `title, subtitle?, source?, spans[{name, provider, start, duration, depth, highlight?}]` |
+| `funnel`     | `title, subtitle?, source?, value_label, compare_label?, steps[{label, value, compare?}]` |
+| `timeline`   | `title, subtitle?, events[{time, title, detail?, provider?, severity}]` |
+| `gauges`     | `items[{label, value (0..1), display, caption?, severity}]` |
+| `followups`  | `title?, questions[]` |
+
+`line_chart` series also accept `dashed_from` (index) to draw a projection.
 
 `severity` / `status`: `info | success | warning | critical`.
 `variant`: `primary | secondary | outline | ghost | destructive`.

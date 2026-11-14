@@ -57,6 +57,12 @@ class ChatController extends ChangeNotifier {
     send(action.label, actionId: action.id);
   }
 
+  void ask(FollowUpsBlock block, String question) {
+    if (_busy) return;
+    block.asked.add(question);
+    send(question);
+  }
+
   void stop() {
     if (_busy) _cancelled = true;
   }

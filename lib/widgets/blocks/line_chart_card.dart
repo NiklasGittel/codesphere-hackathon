@@ -237,6 +237,16 @@ class _LinePainter extends CustomPainter {
     }
   }
 
+  Path _smooth(List<Offset> pts) {
+    final p = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (var i = 1; i < pts.length; i++) {
+      final p0 = pts[i - 1], p1 = pts[i];
+      final mx = (p0.dx + p1.dx) / 2;
+      p.cubicTo(mx, p0.dy, mx, p1.dy, p1.dx, p1.dy);
+    }
+    return p;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final plot = geo.plot;
@@ -334,14 +344,25 @@ class _LinePainter extends CustomPainter {
                 colors: [c.withAlpha(46), c.withAlpha(0)],
               ).createShader(plot));
       }
-      canvas.drawPath(
-          line,
-          Paint()
-            ..color = c
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = s == 0 ? 2 : 1.5
-            ..strokeJoin = StrokeJoin.round
-            ..strokeCap = StrokeCap.round);
+      final stroke = Paint()
+        ..color = c
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s == 0 ? 2 : 1.5
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round;
+      final d = block.series[s].dashedFrom;
+      if (d == null || d <= 0 || d >= pts.length - 1) {
+        canvas.drawPath(line, stroke);
+      } else {
+        canvas.drawPath(_smooth(pts.sublist(0, d + 1)), stroke);
+        for (final m in _smooth(pts.sublist(d)).computeMetrics()) {
+          var dist = 0.0;
+          while (dist < m.length) {
+            canvas.drawPath(m.extractPath(dist, math.min(dist + 5, m.length)), stroke);
+            dist += 9;
+          }
+        }
+      }
     }
     canvas.restore();
 

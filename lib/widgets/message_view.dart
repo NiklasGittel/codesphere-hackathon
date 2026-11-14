@@ -9,9 +9,11 @@ import 'ui/common.dart';
 import 'ui/primitives.dart';
 
 class MessageView extends StatelessWidget {
-  const MessageView({super.key, required this.message, required this.onAction});
+  const MessageView(
+      {super.key, required this.message, required this.onAction, required this.onAsk});
   final ChatMessage message;
   final void Function(ActionsBlock, ActionItem) onAction;
+  final void Function(FollowUpsBlock, String) onAsk;
 
   @override
   Widget build(BuildContext context) =>
@@ -50,7 +52,7 @@ class MessageView extends StatelessWidget {
       final part = message.parts[i];
       final w = switch (part) {
         TextPart p => RichMarkdownText(p.text),
-        BlockPart p => BlockRenderer(block: p.block, onAction: onAction),
+        BlockPart p => BlockRenderer(block: p.block, onAction: onAction, onAsk: onAsk),
       };
       children.add(AnimatedAppear(key: ValueKey('${message.id}-$i'), child: w));
     }

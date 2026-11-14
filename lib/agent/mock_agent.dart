@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import '../models/ui_block.dart';
 import 'agent_service.dart';
 
+part 'mock_insights.dart';
 part 'mock_scenarios.dart';
 
 /// Scripted agent for the demo. All data is simulated.
@@ -15,6 +17,17 @@ class MockAgent implements AgentService {
     if (actionId != null) return _action(actionId);
     final q = message.toLowerCase();
     bool has(List<String> words) => words.any(q.contains);
+    // Generative-UI showcase questions (most specific first).
+    if (has(['black friday', 'what if', "don't fix", 'dont fix', 'not fix', 'projection'])) {
+      return blackFriday(this);
+    }
+    if (has(['error budget', 'burn', 'reliability', 'sla '])) return errorBudget(this);
+    if (has(['timeline', 'happened', 'step by step', 'when did', 'sequence'])) {
+      return timeline(this);
+    }
+    if (has(['trace', 'waterfall', 'span', 'single request'])) return trace(this);
+    if (has(['conversion', 'funnel', 'customers', 'sales', 'abandon'])) return funnel(this);
+    if (has(['region', 'countr', 'affected', 'heatmap'])) return regions(this);
     if (has(['checkout', 'slow', 'latency', 'p95', 'performance'])) {
       return checkout(this);
     }
@@ -45,6 +58,12 @@ class MockAgent implements AgentService {
         return stopGpus(this);
       case 'rightsize':
         return rightsize(this);
+      case 'nav_services':
+        return overview(this);
+      case 'nav_changes':
+        return changes(this);
+      case 'nav_costs':
+        return costs(this);
       case 'incident_checkout':
         return checkout(this);
       case 'incident_search':

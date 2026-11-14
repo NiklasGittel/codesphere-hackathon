@@ -102,6 +102,7 @@ Stream<AgentEvent> checkout(MockAgent a) async* {
       {'id': 'ticket', 'label': 'Open incident', 'variant': 'ghost', 'icon': 'ticket'},
     ],
   });
+  yield a.ui(followups());
 }
 
 Stream<AgentEvent> rollbackPlan(MockAgent a) async* {
