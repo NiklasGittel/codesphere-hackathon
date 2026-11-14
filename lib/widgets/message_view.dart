@@ -5,6 +5,7 @@ import '../models/ui_block.dart';
 import '../theme.dart';
 import '../util/format.dart';
 import 'blocks/block_renderer.dart';
+import 'ui/cloud_avatar.dart';
 import 'ui/common.dart';
 import 'ui/primitives.dart';
 
@@ -64,8 +65,8 @@ class MessageView extends StatelessWidget {
       ]));
     }
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const AgentAvatar(),
-      const SizedBox(width: 14),
+      CloudAvatar(thinking: !message.done),
+      const SizedBox(width: 12),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (var i = 0; i < children.length; i++) ...[
