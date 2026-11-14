@@ -521,6 +521,8 @@ const FIG_H = 2.0;          // figure height in scene units
 const WALK_SPEED = 1.35;    // units/s, matches the walk clip at timeScale 1
 const EXIT_TIMESCALE = 1.35;
 const FADE = 0.35;          // animation crossfade in seconds
+const DANCE_MIX = 0.6;      // dance blended with idle -> calmer moves
+const DANCE_SPEED = 0.8;    // and a bit slower
 const SPAWN_S = 0.7;        // grow-out-of-the-card duration
 const WAVE_S = 1.35;        // how long the leaving figure waves
 const CENTER = new THREE.Vector3(0, 0, 0);
@@ -652,60 +654,99 @@ const MAT_JOINT = new THREE.MeshStandardMaterial({ color: 0x22272d, metalness: 0
 const TEE_BONES = ["Hips", "Spine", "Spine1", "Spine2", "LeftShoulder", "RightShoulder", "LeftArm", "RightArm"].map(n => "mixamorig" + n);
 
 /** Cut a t-shirt out of the body mesh: all triangles skinned mainly to torso, shoulder and
- *  upper-arm bones, pushed out a little along the normals. It is a SkinnedMesh on the same
- *  skeleton, so it follows every animation like real clothing. */
-function buildTee(body, s) {
+ *  upper-arm bones. It is a SkinnedMesh on the same skeleton, so it follows every animation.
+ *  To look like a regular (not skin-tight) tee it is reshaped in the bind pose: shoulders sit
+ *  close, below the chest the fabric falls straight down with some ease and a slight flare,
+ *  sleeves are wide and open. `profile` (chest size) is measured on the body and reused for
+ *  the joint mesh; `shrink` keeps that inner piece just inside the outer one. */
+function buildTee(body, s, profile = null, shrink = 0) {
   const g = body.geometry, pos = g.attributes.position, nrm = g.attributes.normal;
   const si = g.attributes.skinIndex, sw = g.attributes.skinWeight, bones = body.skeleton.bones;
   const teeIdx = new Set(TEE_BONES.map(n => bones.findIndex(b => b.name === n)).filter(i => i >= 0));
-  // true bind-pose world position of a vertex (skinning + mesh transform)
+  // bind-pose world position of a vertex (skinning + mesh transform)
   body.skeleton.update();
   const W = body.matrixWorld, world = (i, out) => body.getVertexPosition(i, out).applyMatrix4(W);
-  // raw geometry units -> world metres (the skin's bind matrix rescales, so measure it)
-  const i0 = 0, i1 = Math.floor(pos.count / 2), w0 = world(i0, new THREE.Vector3()), w1 = world(i1, new THREE.Vector3());
-  const r0 = new THREE.Vector3().fromBufferAttribute(pos, i0), r1 = new THREE.Vector3().fromBufferAttribute(pos, i1);
-  const unit = w0.distanceTo(w1) / r0.distanceTo(r1);
-  const hipsY = wp(s.getObjectByName("mixamorigHips")).y;
+  // raw geometry space -> world is a similarity in the bind pose; measure it from 4 vertices
+  const ids = [0, pos.count / 3 | 0, 2 * pos.count / 3 | 0, pos.count - 1];
+  const R = ids.map(i => new THREE.Vector3().fromBufferAttribute(pos, i)), Wv = ids.map(i => world(i, new THREE.Vector3()));
+  const rawBasis = new THREE.Matrix4().makeBasis(R[1].clone().sub(R[0]), R[2].clone().sub(R[0]), R[3].clone().sub(R[0]));
+  const worldBasis = new THREE.Matrix4().makeBasis(Wv[1].clone().sub(Wv[0]), Wv[2].clone().sub(Wv[0]), Wv[3].clone().sub(Wv[0]));
+  const toWorld = worldBasis.clone().multiply(rawBasis.clone().invert());
+  const toRaw = rawBasis.clone().multiply(worldBasis.clone().invert());
+
+  const hipsY = wp(s.getObjectByName("mixamorigHips")).y, hemY = hipsY - 0.09;
+  const zc = wp(s.getObjectByName("mixamorigSpine1")).z;
+  const chestY = (wp(s.getObjectByName("mixamorigSpine1")).y + wp(s.getObjectByName("mixamorigSpine2")).y) / 2 + 0.02;
   const arm = (side) => ({ a: wp(s.getObjectByName("mixamorig" + side + "Arm")), b: wp(s.getObjectByName("mixamorig" + side + "ForeArm")) });
   const arms = { Left: arm("Left"), Right: arm("Right") };
-  const keep = new Uint8Array(pos.count), rib = new Float32Array(pos.count * 3).fill(1), v = new THREE.Vector3();
-  const chestY = (wp(s.getObjectByName("mixamorigSpine1")).y + wp(s.getObjectByName("mixamorigSpine2")).y) / 2 + 0.02;
-  let frontZ = -Infinity;
+
+  // pass 1: which vertices belong to the shirt (+ chest size of the body)
+  const kind = new Int8Array(pos.count);           // 0 = not in shirt, 1 = torso, 2 = left sleeve, 3 = right sleeve
+  const sleeveT = new Float32Array(pos.count), wpos = new Float32Array(pos.count * 3), v = new THREE.Vector3();
+  const prof = profile || { w: 0, front: 0, back: 0 };
   for (let i = 0; i < pos.count; i++) {
     let best = -1, bw = 0;
     for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
     if (!teeIdx.has(best)) continue;
-    world(i, v);
+    world(i, v); v.toArray(wpos, i * 3);
     const name = bones[best].name;
-    if (name.endsWith("Hips") && v.y < hipsY - 0.03) continue;            // hem just below the belt line
-    let isRib = v.y < hipsY + 0.03;
+    if (name.endsWith("Hips") && v.y < hemY) continue;
     const side = name.includes("Left") ? "Left" : name.includes("Right") ? "Right" : null;
-    if (side && name.endsWith("Arm")) {                                    // short sleeves
+    if (side && name.endsWith("Arm")) {
       const { a, b } = arms[side], seg = b.clone().sub(a), t = v.clone().sub(a).dot(seg) / seg.lengthSq();
-      if (t > 0.45) continue;
-      isRib = t > 0.37;
+      if (t > 0.48) continue;
+      kind[i] = side === "Left" ? 2 : 3; sleeveT[i] = Math.max(0, t);
+    } else kind[i] = 1;
+    if (!profile && kind[i] === 1 && Math.abs(v.y - chestY) < 0.04) {
+      prof.w = Math.max(prof.w, Math.abs(v.x)); prof.front = Math.max(prof.front, v.z - zc); prof.back = Math.max(prof.back, zc - v.z);
     }
-    keep[i] = 1;
-    if (isRib) rib.fill(TEE_HEM, i * 3, i * 3 + 3);
-    if (Math.abs(v.x) < 0.03 && Math.abs(v.y - chestY) < 0.03 && v.z > frontZ) frontZ = v.z;
+  }
+  // chest radius of the shirt in horizontal direction (dx, dz): an ellipse, deeper in front than in back
+  const chestR = (dx, dz) => { const d = dz > 0 ? prof.front : prof.back; return 1 / Math.sqrt((dx / prof.w) ** 2 + (dz / d) ** 2 + 1e-9); };
+  const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+
+  // pass 2: shape the shirt in world space, write back as raw positions
+  const P = new Float32Array(pos.count * 3), rib = new Float32Array(pos.count * 3).fill(1);
+  const n = new THREE.Vector3(), target = new THREE.Vector3(), delta = new THREE.Vector3();
+  let frontZ = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    P[i * 3] = pos.getX(i); P[i * 3 + 1] = pos.getY(i); P[i * 3 + 2] = pos.getZ(i);
+    if (!kind[i]) continue;
+    v.fromArray(wpos, i * 3);
+    n.fromBufferAttribute(nrm, i).applyMatrix4(toWorld).normalize();
+    target.copy(v).addScaledVector(n, 0.018 - shrink);                     // fitted base: 1.8 cm off the body
+    if (kind[i] === 1) {
+      // below the chest: fall straight down (chest width + ease), flaring a little towards the hem
+      const hx = v.x, hz = v.z - zc, r = Math.hypot(hx, hz) || 1e-6;
+      const flare = smooth(chestY, hemY, v.y);
+      const loose = chestR(hx / r, hz / r) + 0.022 + 0.02 * flare - shrink;
+      const k = smooth(chestY + 0.05, chestY - 0.1, v.y);
+      const rNew = THREE.MathUtils.lerp(Math.hypot(target.x, target.z - zc), Math.max(r + 0.018, loose), k);
+      target.x = hx / r * rNew; target.z = zc + hz / r * rNew;
+      if (v.y < hemY + 0.04) rib.fill(TEE_HEM, i * 3, i * 3 + 3);
+      if (Math.abs(v.x) < 0.03 && Math.abs(v.y - chestY) < 0.03) frontZ = Math.max(frontZ, target.z);
+    } else {
+      // sleeves: wide tube around the upper arm, opening up towards the cuff
+      const { a, b } = arms[kind[i] === 2 ? "Left" : "Right"], t = sleeveT[i];
+      const axis = a.clone().lerp(b, t), radial = v.clone().sub(axis), r = radial.length() || 1e-6;
+      target.copy(axis).addScaledVector(radial, (r + 0.03 + 0.03 * t / 0.48 - shrink) / r);
+      if (t > 0.4) rib.fill(TEE_HEM, i * 3, i * 3 + 3);
+    }
+    delta.subVectors(target, v).applyMatrix4(toRaw);
+    P[i * 3] += delta.x; P[i * 3 + 1] += delta.y; P[i * 3 + 2] += delta.z;
   }
   const index = g.index ? g.index.array : Array.from({ length: pos.count }, (_, i) => i), tris = [];
-  for (let f = 0; f < index.length; f += 3) { const a = index[f], b = index[f + 1], c = index[f + 2]; if (keep[a] && keep[b] && keep[c]) tris.push(a, b, c); }
-  const P = new Float32Array(pos.count * 3), off = 0.016 / unit;          // ~1.6 cm off the body
-  for (let i = 0; i < pos.count; i++) {
-    const o = keep[i] ? off : 0;
-    P[i * 3] = pos.getX(i) + nrm.getX(i) * o; P[i * 3 + 1] = pos.getY(i) + nrm.getY(i) * o; P[i * 3 + 2] = pos.getZ(i) + nrm.getZ(i) * o;
-  }
+  for (let f = 0; f < index.length; f += 3) { const a = index[f], b = index[f + 1], c = index[f + 2]; if (kind[a] && kind[b] && kind[c]) tris.push(a, b, c); }
   const tg = new THREE.BufferGeometry();
   tg.setAttribute("position", new THREE.BufferAttribute(P, 3));
-  tg.setAttribute("normal", nrm.clone()); tg.setAttribute("skinIndex", si.clone()); tg.setAttribute("skinWeight", sw.clone());
+  tg.setAttribute("skinIndex", si.clone()); tg.setAttribute("skinWeight", sw.clone());
   tg.setAttribute("color", new THREE.BufferAttribute(rib, 3));
-  tg.setIndex(tris);
+  tg.setIndex(tris); tg.computeVertexNormals();
   const tee = new THREE.SkinnedMesh(tg, teeMaterial(0xffffff));
   tee.name = "teeBody"; tee.castShadow = true; tee.frustumCulled = false;
   tee.position.copy(body.position); tee.quaternion.copy(body.quaternion); tee.scale.copy(body.scale);
   body.parent.add(tee); tee.bind(body.skeleton, body.bindMatrix);
-  return { chestY, frontZ: frontZ + 0.016 };
+  return { chestY, frontZ, profile: prof };
 }
 
 /** SambaDance from Michelle -> Xbot. Same Mixamo bone names, but different rest orientations,
@@ -730,7 +771,7 @@ function retargetDance(michelle, xbot) {
     const t = Math.min(f / fps, clip.duration); times[f] = t;
     mixer.setTime(t); ms.updateMatrixWorld(true);
     v.copy(wp(hips.m)).sub(restHipsM).multiplyScalar(ratio);
-    v.x *= 0.35; v.z *= 0.35;                                   // dance mostly on the spot
+    v.x *= 0.15; v.y *= 0.6; v.z *= 0.15;                       // calm: dance on the spot, less bounce
     v.add(restHipsX); hips.x.parent.worldToLocal(v);
     hips.x.position.copy(v); v.toArray(pv, f * 3);
     // keep the chest (and the print) facing the camera: turn the whole pose back around Y
@@ -767,14 +808,14 @@ function preparePrototype(xbot, michelle) {
     o.castShadow = true; o.frustumCulled = false;
     if (/Surface/i.test(o.name)) { o.material = MAT_SKIN; body = o; } else o.material = MAT_JOINT;
   });
-  // the dark joint mesh (waist ring etc.) gets its own shirt piece, so nothing pokes through
   const joints = [];
   s.traverse(o => { if (o.isSkinnedMesh && o !== body) joints.push(o); });
-  joints.forEach(j => buildTee(j, s));
   if (body) {
-    const { chestY, frontZ } = buildTee(body, s);
+    const { chestY, frontZ, profile } = buildTee(body, s);
+    // the dark joint mesh (shoulder/waist rings) gets an inner shirt piece, so nothing pokes through
+    joints.forEach(j => buildTee(j, s, profile, 0.006));
     // chest print: rigid plane on the upper spine bone, just in front of the shirt
-    const plane = new THREE.Mesh(printGeometry(0.27, 2.2), PRINT_MATS[0]);
+    const plane = new THREE.Mesh(printGeometry(0.3, 1.2), PRINT_MATS[0]);
     plane.name = "shirtPrint";
     plane.position.set(0, chestY, (isFinite(frontZ) ? frontZ : 0.14) + 0.006);
     s.add(plane); plane.updateMatrixWorld(true);
@@ -808,25 +849,34 @@ function makeHuman(hex, light) {
   const root = new THREE.Group(); root.add(model);
   const mixer = new THREE.AnimationMixer(model);
   const find = (n) => proto.animations.find(a => a.name === n);
-  const clips = { Idle: find("idle"), Walking: find("walk"), Dance: danceClip || find("idle") };
+  const clips = { Idle: find("idle"), Walking: find("walk"), Dance: danceClip };
   const actions = Object.fromEntries(Object.entries(clips).filter(([, c]) => c).map(([n, c]) => [n, mixer.clipAction(c)]));
-  const alias = { Jump: "Idle", Wave: "Idle" };
+  const alias = { Jump: "Idle", Wave: "Idle", ...(actions.Dance ? {} : { Dance: "Idle" }) };
+  // all clips run all the time; we only blend their weights (always summing to 1, so never a T-pose).
+  // The dance is mixed with idle and slowed down, so it stays calm.
+  const weights = {}, targets = {};
+  for (const [k, a] of Object.entries(actions)) { a.play(); weights[k] = targets[k] = k === "Idle" ? 1 : 0; a.setEffectiveWeight(weights[k]); }
   const armR = model.getObjectByName("mixamorigRightArm"), foreR = model.getObjectByName("mixamorigRightForeArm"),
         handR = model.getObjectByName("mixamorigRightHand");
   const dir = new THREE.Vector3(), rq = new THREE.Quaternion();
-  let cur = null, wave = 0, waveTarget = 0, t = 0;
+  let wave = 0, waveTarget = 0, t = 0;
   return {
     root,
     play(name, ts = 1) {
       waveTarget = name === "Wave" ? 1 : 0;
-      const next = actions[alias[name] || name]; if (!next) return;
-      if (next === cur) { next.setEffectiveTimeScale(ts); return; }
-      if (cur) cur.fadeOut(FADE);
-      next.reset().setEffectiveTimeScale(ts).setEffectiveWeight(1).fadeIn(FADE).play();
-      cur = next;
+      const key = alias[name] || name; if (!actions[key]) return;
+      for (const k in targets) targets[k] = 0;
+      if (key === "Dance") {
+        targets.Dance = DANCE_MIX; targets.Idle = 1 - DANCE_MIX;
+        if (weights.Dance < 0.01) actions.Dance.time = 0;
+        actions.Dance.setEffectiveTimeScale(DANCE_SPEED);
+      } else { targets[key] = 1; actions[key].setEffectiveTimeScale(ts); }
     },
     update(dt) {
-      t += dt; mixer.update(dt);
+      t += dt;
+      const k = 1 - Math.exp(-dt * 3 / FADE);
+      for (const n in weights) { weights[n] += (targets[n] - weights[n]) * k; actions[n].setEffectiveWeight(weights[n]); }
+      mixer.update(dt);
       wave += (waveTarget - wave) * (1 - Math.exp(-dt * 7));
       if (wave > 0.01 && armR && foreR && handR) {          // procedural wave on top of the idle clip
         root.updateMatrixWorld(true); root.getWorldQuaternion(rq);
@@ -992,7 +1042,7 @@ function updateCamera(dt, t) {
   // wide while figures walk, close-up on the shirt while dancing
   let dist = dancing ? 3.5 : 7.2;
   if (aspect < 1.15) dist *= Math.min(dancing ? 1.15 : 1.45, Math.pow(1.15 / aspect, 0.6));   // portrait: step back a bit
-  camGoal.set(Math.sin(t * 0.18) * (dancing ? 0.45 : 0.7) + focus.x * 0.35 + pointer.x * 0.4,
+  camGoal.set(Math.sin(t * 0.18) * (dancing ? 0.15 : 0.4) + focus.x * 0.35 + pointer.x * 0.2,
               (dancing ? 1.45 : 1.6) - pointer.y * 0.15,
               dist + focus.z * 0.25);
   lookGoal.set(focus.x * 0.45, dancing ? 1.3 : 1.0, focus.z * 0.3);
