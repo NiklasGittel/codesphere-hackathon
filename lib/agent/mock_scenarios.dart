@@ -23,40 +23,40 @@ const _topology = {
 // ------------------------------------------------------------- checkout ----
 
 Stream<AgentEvent> checkout(MockAgent a) async* {
-  yield* a.step('intent', 'Understanding the question',
-      ms: 450, detail: 'checkout · latency');
   yield* a.step('map', 'Mapping the checkout request path',
-      source: 'codesphere', ms: 800, detail: '4 services');
+      source: 'codesphere', ms: 600, detail: '4 services');
   yield const StepStarted('metrics', 'Querying latency metrics', source: 'aws');
-  await a.wait(150);
+  await a.wait(120);
   yield const StepStarted('traces', 'Pulling distributed traces', source: 'gcp');
-  await a.wait(150);
+  await a.wait(120);
   yield const StepStarted('deploys', 'Checking recent deploys', source: 'codesphere');
-  await a.wait(650);
-  yield const StepCompleted('deploys', detail: '3 deploys / 24h');
-  await a.wait(400);
-  yield const StepCompleted('metrics', detail: '2,880 datapoints');
   await a.wait(500);
+  yield const StepCompleted('deploys', detail: '3 deploys / 24h');
+  await a.wait(300);
+  yield const StepCompleted('metrics', detail: '2,880 datapoints');
+  await a.wait(400);
   yield const StepCompleted('traces', detail: '12,408 spans');
-  yield* a.step('correlate', 'Correlating signals', ms: 900, detail: 'match found');
+  yield* a.step('correlate', 'Correlating signals', ms: 700, detail: 'root cause found');
 
-  yield* a.say(
-      'Checkout got slow because of a **cross-region hop** introduced last night. Here is what I found:');
-  await a.wait(200);
   yield a.ui({
-    'type': 'stats',
+    'type': 'brief',
+    'severity': 'critical',
+    'title': 'Checkout is slow in West Europe',
+    'badge': 'Ongoing · 14 h',
     'items': [
-      {'label': 'Checkout p95', 'value': '1.92 s', 'delta': '+357%', 'good': false},
-      {'label': 'Conversion rate', 'value': '2.9%', 'delta': '−0.4 pp', 'good': false},
-      {'label': 'Affected sessions', 'value': '18.4k', 'delta': 'last 14 h'},
-      {'label': 'Revenue at risk', 'value': '€6.3k', 'delta': 'per day', 'good': false},
+      {'label': 'What', 'text': 'Checkout p95 is **1.92 s**, 2.4× over the 800 ms SLO.'},
+      {'label': 'Impact', 'text': '18.4k sessions affected, conversion −0.4 pp, about **€6.3k/day** revenue at risk.'},
+      {'label': 'Cause', 'text': 'Deploy **#482** moved payment-svc to us-east1. Every checkout now makes 3 transatlantic calls.'},
+      {'label': 'Fix', 'text': 'Roll back payment-svc to europe-west3. About 5 min, no downtime.'},
     ],
   });
-  await a.wait(400);
+  await a.wait(300);
+  yield* a.say('Here is the evidence:');
+  await a.wait(150);
   yield a.ui({
     'type': 'line_chart',
     'title': 'Checkout latency',
-    'subtitle': 'Last 24 hours · all regions',
+    'subtitle': 'Last 24 hours · West Europe',
     'source': 'AWS CloudWatch',
     'unit': 'ms',
     'labels': _hours,
@@ -75,9 +75,9 @@ Stream<AgentEvent> checkout(MockAgent a) async* {
     'highlight_from': 9,
     'highlight_label': 'After deploy #482',
   });
-  await a.wait(450);
+  await a.wait(400);
   yield a.ui(_topology);
-  await a.wait(450);
+  await a.wait(400);
   yield a.ui({
     'type': 'bar_chart',
     'title': 'Where the time goes',
@@ -93,21 +93,7 @@ Stream<AgentEvent> checkout(MockAgent a) async* {
       {'label': 'fraud-check', 'sublabel': 'aws · eu-central-1', 'value': 96},
     ],
   });
-  await a.wait(450);
-  yield a.ui({
-    'type': 'finding',
-    'severity': 'critical',
-    'title': 'Root cause: payment-svc was moved to us-east1',
-    'body':
-        'Deploy **#482** (yesterday 21:04) changed the region of payment-svc from europe-west3 to us-east1. checkout-api calls it **3× sequentially** per checkout, which adds ~820 ms of transatlantic round-trips plus extra TLS handshakes.',
-    'evidence': [
-      'Latency step change at 21:06, two minutes after deploy #482',
-      'payment.authorize p95 went from 31 ms to 274 ms per call',
-      'No change in traffic volume or error rates before the deploy',
-    ],
-  });
-  yield* a.say(
-      'Rolling payment-svc back to europe-west3 should bring p95 back under the 800 ms SLO within minutes. How do you want to proceed?');
+  yield* a.say('How do you want to proceed?');
   yield a.ui({
     'type': 'actions',
     'actions': [
@@ -246,8 +232,18 @@ Stream<AgentEvent> costs(MockAgent a) async* {
       ms: 800, detail: '903 resources');
   yield* a.step('waste', 'Detecting waste patterns', ms: 700, detail: '23 findings');
 
-  yield* a.say(
-      'You are on track to spend **€52.9k** this month, 9.7% over budget. I found **€11.4k/month** in savings, and most of them do not touch production performance.');
+  yield a.ui({
+    'type': 'brief',
+    'severity': 'success',
+    'title': 'You can cut cloud spend by 21.6%',
+    'badge': '€11.4k / month',
+    'items': [
+      {'label': 'What', 'text': 'November is forecast at **€52.9k**, 9.7% over the €48.2k budget.'},
+      {'label': 'Cause', 'text': 'An idle GPU pool, an oversized database, cross-cloud egress and orphaned volumes.'},
+      {'label': 'Fix', 'text': '4 changes across 3 clouds. The two biggest have no or low risk.'},
+      {'label': 'Savings', 'text': '**€11.4k/month**, that is €137k per year.'},
+    ],
+  });
   yield a.ui({
     'type': 'stats',
     'items': [
@@ -410,6 +406,165 @@ Stream<AgentEvent> overview(MockAgent a) async* {
     'actions': [
       {'id': 'ask_checkout', 'label': 'Why is checkout slow?', 'variant': 'outline', 'icon': 'bolt'},
       {'id': 'ask_costs', 'label': 'Where can I save money?', 'variant': 'outline', 'icon': 'savings'},
+    ],
+  });
+}
+
+// ------------------------------------------------- start page entry points ----
+
+Stream<AgentEvent> incidentSearch(MockAgent a) async* {
+  yield* a.step('logs', 'Reading search-api logs', source: 'azure', ms: 700, detail: '41k lines');
+  yield* a.step('deps', 'Checking dependencies', source: 'azure', ms: 600, detail: 'index healthy');
+  yield* a.step('correlate', 'Correlating with traffic', ms: 500, detail: 'match found');
+  yield a.ui({
+    'type': 'brief',
+    'severity': 'warning',
+    'title': 'Search errors elevated',
+    'badge': 'Ongoing · 47 min',
+    'items': [
+      {'label': 'What', 'text': 'search-api returns 5xx on **1.8%** of requests (normally 0.2%).'},
+      {'label': 'Impact', 'text': 'About 1 in 55 searches fails. Checkout is not affected.'},
+      {'label': 'Cause', 'text': 'The app service plan hit its **instance limit (4/4)** during the lunch traffic peak.'},
+      {'label': 'Fix', 'text': 'Raise the autoscale limit to 8 instances. About +€140/month.'},
+    ],
+  });
+  yield a.ui({
+    'type': 'line_chart',
+    'title': 'search-api 5xx rate',
+    'subtitle': 'Last 2 hours',
+    'source': 'Azure Monitor',
+    'unit': '%',
+    'labels': List.generate(16, (i) => '${10 + (i * 8) ~/ 60}:${((i * 8) % 60).toString().padLeft(2, '0')}'),
+    'series': [
+      {'name': '5xx rate', 'values': [0.2, 0.2, 0.3, 0.2, 0.2, 0.3, 0.2, 0.3, 0.4, 0.6, 0.9, 1.1, 1.4, 1.5, 1.7, 1.8]},
+    ],
+    'threshold': 1.0,
+    'threshold_label': 'Alert 1%',
+    'highlight_from': 8,
+    'highlight_label': 'Instance limit reached',
+    'highlight_severity': 'warning',
+  });
+  yield a.ui({
+    'type': 'actions',
+    'actions': [
+      {'id': 'scale_search', 'label': 'Raise autoscale limit to 8', 'variant': 'primary', 'icon': 'bolt'},
+      {'id': 'cancel', 'label': 'Ignore for now', 'variant': 'ghost', 'icon': 'close'},
+    ],
+  });
+}
+
+Stream<AgentEvent> scaleSearch(MockAgent a) async* {
+  yield* a.step('scale', 'Updating autoscale rule on search-plan', source: 'azure', ms: 1200, detail: 'max 4 → 8');
+  yield* a.step('verify', 'Waiting for new instances', source: 'azure', ms: 1200, detail: '6 running');
+  yield a.ui({
+    'type': 'finding',
+    'severity': 'success',
+    'title': 'Search is recovering',
+    'body': '5xx rate dropped to **0.3%** with 6 instances running.',
+  });
+}
+
+Stream<AgentEvent> incidentStorage(MockAgent a) async* {
+  yield* a.step('metrics', 'Reading storage metrics for orders-db', source: 'azure', ms: 700, detail: '30 days');
+  yield* a.step('tables', 'Finding the largest tables', source: 'azure', ms: 700, detail: '3 tables');
+  yield a.ui({
+    'type': 'brief',
+    'severity': 'warning',
+    'title': 'orders-db storage 86% full',
+    'badge': 'Full in ~9 days',
+    'items': [
+      {'label': 'What', 'text': 'orders-db uses **430 of 500 GB** and grows ~7 GB per day.'},
+      {'label': 'Impact', 'text': 'No impact yet. When the disk is full, new orders fail.'},
+      {'label': 'Cause', 'text': 'The `audit_log` table (212 GB) has no retention policy.'},
+      {'label': 'Fix', 'text': 'Archive audit entries older than 90 days to cold storage. Frees ~180 GB.'},
+    ],
+  });
+  yield a.ui({
+    'type': 'bar_chart',
+    'title': 'Largest tables',
+    'source': 'Azure SQL',
+    'unit': 'GB',
+    'bars': [
+      {'label': 'audit_log', 'sublabel': 'no retention policy', 'value': 212, 'highlight': true},
+      {'label': 'orders', 'sublabel': '14.2M rows', 'value': 128},
+      {'label': 'order_items', 'sublabel': '41.8M rows', 'value': 71},
+      {'label': 'other', 'sublabel': '38 tables', 'value': 19},
+    ],
+  });
+  yield a.ui({
+    'type': 'actions',
+    'actions': [
+      {'id': 'archive', 'label': 'Archive audit logs > 90 days', 'variant': 'primary', 'icon': 'export'},
+      {'id': 'cancel', 'label': 'Remind me tomorrow', 'variant': 'ghost', 'icon': 'close'},
+    ],
+  });
+}
+
+Stream<AgentEvent> archive(MockAgent a) async* {
+  yield* a.step('policy', 'Creating 90-day retention policy', source: 'azure', ms: 900, detail: 'audit_log');
+  yield* a.step('move', 'Moving old entries to cold storage', source: 'azure', ms: 1400, detail: '181 GB');
+  yield a.ui({
+    'type': 'finding',
+    'severity': 'success',
+    'title': 'Freed 181 GB on orders-db',
+    'body': 'Storage is at **50%**. At current growth that lasts about 5 months.',
+  });
+}
+
+Stream<AgentEvent> suggestGpu(MockAgent a) async* {
+  yield* a.step('usage', 'Reading GPU utilisation for gke-ml-pool', source: 'gcp', ms: 800, detail: '14 days');
+  yield* a.step('jobs', 'Checking the training job schedule', source: 'gcp', ms: 600, detail: '2 jobs / week');
+  yield a.ui({
+    'type': 'brief',
+    'severity': 'success',
+    'title': 'Scale idle GPU pool to zero',
+    'badge': '€4.1k / month',
+    'items': [
+      {'label': 'What', 'text': 'gke-ml-pool runs **4× A100** around the clock.'},
+      {'label': 'Cause', 'text': 'It is idle **92%** of the time. Training only runs twice a week.'},
+      {'label': 'Fix', 'text': 'Enable scale-to-zero. Nodes start automatically when a job is queued.'},
+      {'label': 'Savings', 'text': '**€4,120/month** with no impact on production.'},
+    ],
+  });
+  yield a.ui({
+    'type': 'line_chart',
+    'title': 'GPU utilisation',
+    'subtitle': 'Last 14 days · gke-ml-pool',
+    'source': 'Cloud Monitoring',
+    'unit': '%',
+    'labels': List.generate(14, (i) => 'Nov ${i + 1}'),
+    'series': [
+      {'name': 'GPU util', 'values': [0, 0, 0, 0, 0, 2, 71, 3, 1, 0, 68, 2, 0, 1]},
+    ],
+  });
+  yield a.ui({
+    'type': 'actions',
+    'actions': [
+      {'id': 'stop_gpus', 'label': 'Enable scale-to-zero', 'variant': 'primary', 'icon': 'stop'},
+      {'id': 'ask_costs', 'label': 'Show all savings', 'variant': 'outline', 'icon': 'savings'},
+    ],
+  });
+}
+
+Stream<AgentEvent> suggestEgress(MockAgent a) async* {
+  yield* a.step('flows', 'Analysing cross-cloud traffic', source: 'gcp', ms: 800, detail: '3.1 TB / month');
+  yield a.ui({
+    'type': 'brief',
+    'severity': 'success',
+    'title': 'Keep payment traffic in the EU',
+    'badge': '€3.0k / month',
+    'items': [
+      {'label': 'What', 'text': 'payment-svc in us-east1 sends **3.1 TB/month** to orders-db in Azure westeurope.'},
+      {'label': 'Cause', 'text': 'Deploy #482 moved payment-svc out of the EU. This is also why **checkout is slow**.'},
+      {'label': 'Fix', 'text': 'Roll back payment-svc to europe-west3.'},
+      {'label': 'Savings', 'text': '**€2,960/month** in egress, plus checkout back under SLO.'},
+    ],
+  });
+  yield a.ui({
+    'type': 'actions',
+    'actions': [
+      {'id': 'rollback', 'label': 'Plan the rollback', 'variant': 'primary', 'icon': 'rollback'},
+      {'id': 'ask_checkout', 'label': 'Show checkout impact', 'variant': 'outline', 'icon': 'bolt'},
     ],
   });
 }

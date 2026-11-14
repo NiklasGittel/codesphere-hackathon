@@ -19,8 +19,9 @@ class AppLogo extends StatelessWidget {
 }
 
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key, required this.onNewChat});
+  const Sidebar({super.key, required this.onNewChat, this.overviewActive = false});
   final VoidCallback onNewChat;
+  final bool overviewActive;
 
   static const _recent = [
     'Checkout latency spike',
@@ -63,7 +64,14 @@ class Sidebar extends StatelessWidget {
               onPressed: onNewChat,
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 12),
+          _NavItem(
+            icon: Icons.space_dashboard_outlined,
+            label: 'Overview',
+            active: overviewActive,
+            onTap: onNewChat,
+          ),
+          const SizedBox(height: 18),
           const _SectionLabel('Recent'),
           const SizedBox(height: 4),
           for (final r in _recent) _NavItem(icon: Icons.chat_bubble_outline_rounded, label: r),
@@ -110,29 +118,36 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _NavItem extends StatelessWidget {
-  const _NavItem({required this.icon, required this.label});
+  const _NavItem({required this.icon, required this.label, this.active = false, this.onTap});
   final IconData icon;
   final String label;
+  final bool active;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => HoverBuilder(
-        onTap: () {},
+        onTap: onTap ?? () {},
         builder: (context, hovered) => Container(
           height: 34,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           margin: const EdgeInsets.only(top: 2),
           decoration: BoxDecoration(
-            color: hovered ? AppColors.muted : Colors.transparent,
+            color: active
+                ? AppColors.border
+                : (hovered ? AppColors.muted : Colors.transparent),
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: Row(children: [
-            Icon(icon, size: 15, color: AppColors.mutedForeground),
+            Icon(icon, size: 15, color: active ? AppColors.foreground : AppColors.mutedForeground),
             const SizedBox(width: 10),
             Expanded(
               child: Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: AppColors.foreground)),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: active ? FontWeight.w500 : FontWeight.w400,
+                      color: AppColors.foreground)),
             ),
           ]),
         ),

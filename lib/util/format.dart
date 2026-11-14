@@ -31,13 +31,16 @@ String formatValue(double v, String unit) {
 String formatAxis(double v, String unit) {
   String compact(double x) => x >= 1000
       ? '${(x / 1000).toStringAsFixed(x % 1000 == 0 ? 0 : 1)}k'
-      : x.round().toString();
+      : (x < 10 && x != x.roundToDouble())
+          ? x.toStringAsFixed(1)
+          : x.round().toString();
   if (unit == 'ms') {
     return v >= 1000
         ? '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}s'
         : '${v.round()}';
   }
   if (unit == '€' || unit == '\$') return '$unit${compact(v)}';
+  if (unit == '%') return '${compact(v)}%';
   return compact(v);
 }
 

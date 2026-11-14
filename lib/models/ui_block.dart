@@ -49,6 +49,8 @@ sealed class UiBlock {
         return TableBlock.fromJson(json);
       case 'actions':
         return ActionsBlock.fromJson(json);
+      case 'brief':
+        return BriefBlock.fromJson(json);
       default:
         return FindingBlock(
           title: 'Unknown component "$type"',
@@ -350,6 +352,37 @@ class ActionsBlock extends UiBlock {
                   variant: _str(a['variant']) ?? 'outline',
                   icon: _str(a['icon']),
                 ))
+            .toList(),
+      );
+}
+
+// ---------------------------------------------------------------- brief ----
+
+/// Concise problem breakdown shown first: what / impact / cause / fix.
+class BriefItem {
+  const BriefItem({required this.label, required this.text});
+  final String label;
+  final String text;
+}
+
+class BriefBlock extends UiBlock {
+  const BriefBlock(
+      {required this.title,
+      required this.items,
+      this.severity = Severity.info,
+      this.badge});
+  final String title;
+  final Severity severity;
+  final String? badge;
+  final List<BriefItem> items;
+
+  factory BriefBlock.fromJson(Map<String, dynamic> j) => BriefBlock(
+        title: _str(j['title']) ?? '',
+        severity: parseSeverity(j['severity']),
+        badge: _str(j['badge']),
+        items: _maps(j['items'])
+            .map((m) => BriefItem(
+                label: _str(m['label']) ?? '', text: _str(m['text']) ?? ''))
             .toList(),
       );
 }

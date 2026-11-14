@@ -231,3 +231,72 @@ class FindingView extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------- brief ----
+
+class BriefView extends StatelessWidget {
+  const BriefView({super.key, required this.block});
+  final BriefBlock block;
+
+  IconData _icon(String label) => switch (label.toLowerCase()) {
+        'what' => Icons.report_outlined,
+        'impact' => Icons.trending_down_rounded,
+        'cause' => Icons.search_rounded,
+        'fix' => Icons.build_outlined,
+        'effort' => Icons.schedule_rounded,
+        'savings' => Icons.savings_outlined,
+        _ => Icons.circle_outlined,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = severityStyle(block.severity);
+    final tinted = block.severity != Severity.info;
+    return ShadCard(
+      padding: EdgeInsets.zero,
+      borderColor: tinted ? s.border : null,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          color: tinted ? s.bg : AppColors.subtle,
+          child: Row(children: [
+            Icon(s.icon, size: 18, color: s.fg),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(block.title,
+                  style: AppText.title.copyWith(
+                      fontSize: 14.5, color: tinted ? s.fg : AppColors.foreground)),
+            ),
+            if (block.badge != null) ShadBadge(label: block.badge!, color: tinted ? s.fg : null),
+          ]),
+        ),
+        for (var i = 0; i < block.items.length; i++)
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
+            decoration: BoxDecoration(
+              border: Border(
+                  top: BorderSide(color: tinted ? s.border.withAlpha(140) : AppColors.border)),
+            ),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: SizedBox(
+                width: 92,
+                child: Row(children: [
+                  Icon(_icon(block.items[i].label), size: 14, color: AppColors.mutedForeground),
+                  const SizedBox(width: 6),
+                  Text(block.items[i].label.toUpperCase(),
+                      style: AppText.label.copyWith(fontSize: 10.5)),
+                ]),
+              ),
+              ),
+              Expanded(
+                child: RichMarkdownText(block.items[i].text,
+                    style: AppText.body.copyWith(fontSize: 13.5, height: 1.5)),
+              ),
+            ]),
+          ),
+      ]),
+    );
+  }
+}

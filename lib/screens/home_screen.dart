@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../models/chat_message.dart';
 import '../state/chat_controller.dart';
 import '../theme.dart';
 import '../widgets/composer.dart';
-import '../widgets/empty_state.dart';
 import '../widgets/message_view.dart';
 import '../widgets/sidebar.dart';
+import '../widgets/start_page.dart';
 import '../widgets/ui/primitives.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -53,20 +54,37 @@ class _HomeScreenState extends State<HomeScreen> {
     c.send(text);
   }
 
+  void _open(String title, String actionId) {
+    _forceScroll = true;
+    c.send(title, actionId: actionId);
+  }
+
+  String? get _topic {
+    if (c.messages.isEmpty) return null;
+    final parts = c.messages.first.parts;
+    final first = parts.isEmpty ? null : parts.first;
+    return first is TextPart ? first.text : null;
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
         final wide = box.maxWidth >= 980;
         return Scaffold(
           body: Row(children: [
-            if (wide) Sidebar(onNewChat: c.reset),
+            if (wide)
+              ListenableBuilder(
+                listenable: c,
+                builder: (context, _) =>
+                    Sidebar(onNewChat: c.reset, overviewActive: c.messages.isEmpty),
+              ),
             if (wide) const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
             Expanded(
               child: ListenableBuilder(
                 listenable: c,
                 builder: (context, _) => Column(children: [
-                  const _TopBar(),
+                  _TopBar(topic: _topic, onBack: c.reset),
                   Expanded(
-                    child: c.messages.isEmpty ? EmptyState(onPick: _send) : _messages(),
+                    child: c.messages.isEmpty ? StartPage(onOpen: _open) : _messages(),
                   ),
                   Composer(busy: c.busy, onSend: _send, onStop: c.stop),
                 ]),
@@ -104,22 +122,50 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar();
+  const _TopBar({required this.topic, required this.onBack});
+  final String? topic;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) => Container(
         height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.border)),
         ),
         child: Row(children: [
-          const Text('Production',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 4),
-          const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.mutedForeground),
-          const SizedBox(width: 12),
-          const ShadBadge(label: '4 providers · 38 services'),
+          if (topic != null) ...[
+            ShadButton(
+              icon: Icons.arrow_back_rounded,
+              variant: ButtonVariant.ghost,
+              small: true,
+              tooltip: 'Back to overview',
+              onPressed: onBack,
+            ),
+            const SizedBox(width: 6),
+            HoverBuilder(
+              onTap: onBack,
+              builder: (context, hovered) => Text('Overview',
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: hovered ? AppColors.foreground : AppColors.mutedForeground)),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.borderStrong),
+            ),
+            Flexible(
+              child: Text(topic!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+          ] else ...[
+            const SizedBox(width: 4),
+            const Text('Overview', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            const ShadBadge(label: 'Production · 4 providers · 38 services'),
+          ],
           const Spacer(),
           const Dot(color: AppColors.success, size: 7),
           const SizedBox(width: 8),

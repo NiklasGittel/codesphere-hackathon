@@ -20,5 +20,6 @@ class BlockRenderer extends StatelessWidget {
         FindingBlock b => FindingView(block: b),
         TableBlock b => TableCard(block: b),
         ActionsBlock b => ActionsView(block: b, onAction: onAction),
+        BriefBlock b => BriefView(block: b),
       };
 }

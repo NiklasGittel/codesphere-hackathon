@@ -45,6 +45,22 @@ class MockAgent implements AgentService {
         return stopGpus(this);
       case 'rightsize':
         return rightsize(this);
+      case 'incident_checkout':
+        return checkout(this);
+      case 'incident_search':
+        return incidentSearch(this);
+      case 'scale_search':
+        return scaleSearch(this);
+      case 'incident_storage':
+        return incidentStorage(this);
+      case 'archive':
+        return archive(this);
+      case 'suggest_savings':
+        return costs(this);
+      case 'suggest_gpu':
+        return suggestGpu(this);
+      case 'suggest_egress':
+        return suggestEgress(this);
       case 'cancel':
         return simple(
             'Okay, nothing was changed. Let me know if you want to look at other options.');
