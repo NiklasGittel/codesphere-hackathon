@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import '../gemini/gemini_client.dart';
 import '../models/ui_block.dart';
 import 'agent_service.dart';
 
 part 'mock_insights.dart';
+part 'mock_router.dart';
 part 'mock_scenarios.dart';
 
 /// Scripted agent for the demo. All data is simulated.
@@ -12,36 +14,51 @@ part 'mock_scenarios.dart';
 /// Blocks are written as JSON on purpose: it is exactly the shape the real
 /// LLM will produce through a `render_ui` function call.
 class MockAgent implements AgentService {
+  final _gemini = GeminiClient();
+
   @override
-  Stream<AgentEvent> send(String message, {String? actionId}) {
-    if (actionId != null) return _action(actionId);
-    final q = message.toLowerCase();
-    bool has(List<String> words) => words.any(q.contains);
-    // Generative-UI showcase questions (most specific first).
-    if (has(['black friday', 'what if', "don't fix", 'dont fix', 'not fix', 'projection'])) {
-      return blackFriday(this);
+  Stream<AgentEvent> send(String message, {String? actionId}) async* {
+    if (actionId != null) {
+      yield* _action(actionId);
+      return;
     }
-    if (has(['error budget', 'burn', 'reliability', 'sla '])) return errorBudget(this);
-    if (has(['timeline', 'happened', 'step by step', 'when did', 'sequence'])) {
-      return timeline(this);
+    final useGemini = GeminiClient.configured;
+    yield StepStarted('route', 'Understanding the question', source: useGemini ? 'gemini' : null);
+    String? intent;
+    if (useGemini) {
+      try {
+        intent = await _gemini
+            .classify(message, intents, context: _routingContext)
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        intent = null;
+      }
     }
-    if (has(['trace', 'waterfall', 'span', 'single request'])) return trace(this);
-    if (has(['conversion', 'funnel', 'customers', 'sales', 'abandon'])) return funnel(this);
-    if (has(['region', 'countr', 'affected', 'heatmap'])) return regions(this);
-    if (has(['checkout', 'slow', 'latency', 'p95', 'performance'])) {
-      return checkout(this);
-    }
-    if (has(['cost', 'spend', 'save', 'saving', 'bill', 'budget', 'cheap'])) {
-      return costs(this);
-    }
-    if (has(['change', 'deploy', 'release', '24h', 'yesterday'])) {
-      return changes(this);
-    }
-    return overview(this);
+    intent ??= keywordIntent(message);
+    yield StepCompleted('route', detail: intentLabels[intent] ?? intent);
+    yield* _action(intent);
   }
 
   Stream<AgentEvent> _action(String id) {
     switch (id) {
+      case 'regions':
+        return regions(this);
+      case 'trace':
+        return trace(this);
+      case 'funnel':
+        return funnel(this);
+      case 'timeline':
+        return timeline(this);
+      case 'error_budget':
+        return errorBudget(this);
+      case 'black_friday':
+        return blackFriday(this);
+      case 'changes':
+        return changes(this);
+      case 'costs':
+        return costs(this);
+      case 'overview':
+        return overview(this);
       case 'ask_checkout':
         return checkout(this);
       case 'ask_costs':

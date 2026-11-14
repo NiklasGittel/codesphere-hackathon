@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 
+import '../gemini/gemini_client.dart';
 import '../theme.dart';
+import '../voice/audio_recorder.dart';
+import '../voice/speech_input.dart';
 import 'ui/primitives.dart';
 
 class Composer extends StatefulWidget {
@@ -23,10 +28,19 @@ class Composer extends StatefulWidget {
   State<Composer> createState() => _ComposerState();
 }
 
+enum _Voice { idle, recording, transcribing }
+
 class _ComposerState extends State<Composer> {
   final _ctrl = TextEditingController();
   late final FocusNode _focus = FocusNode(onKeyEvent: _onKey);
-  bool _listening = false;
+  final _speech = SpeechInput();
+  final _recorder = AudioRecorder();
+  final _gemini = GeminiClient();
+  _Voice _voice = _Voice.idle;
+  double _level = 0;
+  bool _heardSpeech = false;
+  DateTime _lastLoud = DateTime.now();
+  DateTime _recordStarted = DateTime.now();
   bool _focused = false;
 
   @override
@@ -37,6 +51,8 @@ class _ComposerState extends State<Composer> {
 
   @override
   void dispose() {
+    _speech.stop();
+    _recorder.cancel();
     _ctrl.dispose();
     _focus.dispose();
     super.dispose();
@@ -62,9 +78,128 @@ class _ComposerState extends State<Composer> {
     });
   }
 
-  void _toggleMic() {
-    setState(() => _listening = !_listening);
-    widget.onMicToggle?.call(_listening);
+  // ------------------------------------------------------------ voice ----
+
+  Future<void> _toggleMic() async {
+    switch (_voice) {
+      case _Voice.transcribing:
+        return;
+      case _Voice.recording:
+        await _finishRecording();
+      case _Voice.idle:
+        if (widget.busy) return;
+        if (GeminiClient.configured && _recorder.supported) {
+          await _startRecording();
+        } else {
+          _startBrowserSpeech();
+        }
+    }
+  }
+
+  Future<void> _startRecording() async {
+    _heardSpeech = false;
+    _lastLoud = DateTime.now();
+    _recordStarted = DateTime.now();
+    try {
+      await _recorder.start(onLevel: _onLevel);
+    } catch (e) {
+      _toast('Microphone access is blocked. Allow it via the icon in the address bar.');
+      return;
+    }
+    _ctrl.clear();
+    setState(() => _voice = _Voice.recording);
+    widget.onMicToggle?.call(true);
+  }
+
+  /// Auto-stop after ~1.4 s of silence once speech was heard (max 20 s).
+  void _onLevel(double level) {
+    if (_voice != _Voice.recording) return;
+    final now = DateTime.now();
+    if (level > 0.025) {
+      _heardSpeech = true;
+      _lastLoud = now;
+    }
+    final silent = now.difference(_lastLoud).inMilliseconds > 1400;
+    final tooLong = now.difference(_recordStarted).inSeconds >= 20;
+    if ((_heardSpeech && silent) || tooLong) _finishRecording();
+    final smoothed = (_level * 0.6 + math.min(1.0, level * 8) * 0.4);
+    if ((smoothed - _level).abs() > 0.04) setState(() => _level = smoothed);
+  }
+
+  Future<void> _finishRecording() async {
+    if (_voice != _Voice.recording) return;
+    setState(() {
+      _voice = _Voice.transcribing;
+      _level = 0;
+    });
+    widget.onMicToggle?.call(false);
+    try {
+      final wav = await _recorder.stop();
+      if (wav == null || !_heardSpeech) {
+        _toast("Didn't catch that. Tap the mic and try again.");
+        return;
+      }
+      final text = await _gemini.transcribe(wav);
+      if (!mounted) return;
+      if (text.isEmpty) {
+        _toast("Didn't catch that. Tap the mic and try again.");
+        return;
+      }
+      _ctrl.value =
+          TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+      setState(() => _voice = _Voice.idle);
+      _submit();
+    } catch (e) {
+      _toast('$e');
+    } finally {
+      if (mounted && _voice == _Voice.transcribing) setState(() => _voice = _Voice.idle);
+    }
+  }
+
+  /// Fallback when no Gemini key is configured: the browser's speech API.
+  void _startBrowserSpeech() {
+    if (!GeminiClient.configured) {
+      _toast('No GEMINI_API_KEY set, using browser speech recognition instead.');
+    }
+    final started = _speech.start(
+      onResult: (text, isFinal) {
+        if (!mounted) return;
+        _ctrl.value =
+            TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+        if (isFinal) {
+          _speech.stop();
+          setState(() => _voice = _Voice.idle);
+          if (text.trim().isNotEmpty) _submit();
+        }
+      },
+      onEnd: () {
+        if (mounted && _voice == _Voice.recording) setState(() => _voice = _Voice.idle);
+      },
+      onError: (error) {
+        if (!mounted) return;
+        setState(() => _voice = _Voice.idle);
+        _toast(error == 'not-allowed'
+            ? 'Microphone access is blocked. Allow it via the icon in the address bar.'
+            : 'Voice input error: $error');
+      },
+    );
+    if (!started) {
+      _toast('Voice input is not supported in this browser.');
+      return;
+    }
+    _ctrl.clear();
+    setState(() => _voice = _Voice.recording);
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+      width: 460,
+      backgroundColor: AppColors.primary,
+      duration: const Duration(seconds: 4),
+    ));
   }
 
   @override
@@ -97,9 +232,11 @@ class _ComposerState extends State<Composer> {
                   maxLines: 6,
                   style: AppText.body,
                   decoration: InputDecoration(
-                    hintText: _listening
-                        ? 'Listening…'
-                        : 'Ask about performance, costs or incidents…',
+                    hintText: switch (_voice) {
+                      _Voice.recording => 'Listening… pause or tap stop when you are done',
+                      _Voice.transcribing => 'Transcribing with Gemini…',
+                      _Voice.idle => 'Ask about performance, costs or incidents…',
+                    },
                     hintStyle: AppText.body.copyWith(color: AppColors.mutedForeground),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
@@ -115,7 +252,7 @@ class _ComposerState extends State<Composer> {
                     const SizedBox(width: 6),
                     const _ScopeChip(icon: Icons.public_rounded, label: 'Production'),
                     const Spacer(),
-                    _MicButton(listening: _listening, onTap: _toggleMic),
+                    _MicButton(state: _voice, level: _level, onTap: _toggleMic),
                     const SizedBox(width: 8),
                     ValueListenableBuilder<TextEditingValue>(
                       valueListenable: _ctrl,
@@ -173,31 +310,50 @@ class _ScopeChip extends StatelessWidget {
 }
 
 class _MicButton extends StatelessWidget {
-  const _MicButton({required this.listening, required this.onTap});
-  final bool listening;
+  const _MicButton({required this.state, required this.level, required this.onTap});
+  final _Voice state;
+  final double level;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: listening ? 'Stop listening' : 'Voice input',
-        child: HoverBuilder(
-          onTap: onTap,
-          builder: (context, hovered) => AnimatedContainer(
+  Widget build(BuildContext context) {
+    final recording = state == _Voice.recording;
+    final transcribing = state == _Voice.transcribing;
+    return Tooltip(
+      message: recording
+          ? 'Stop and transcribe'
+          : (transcribing ? 'Transcribing with Gemini…' : 'Voice input (Gemini)'),
+      child: HoverBuilder(
+        onTap: transcribing ? null : onTap,
+        builder: (context, hovered) => Stack(alignment: Alignment.center, children: [
+          // Pulsing ring that follows the input level.
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: recording ? 32 + 14 * level : 32,
+            height: recording ? 32 + 14 * level : 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: recording ? AppColors.destructive.withAlpha(40) : Colors.transparent,
+            ),
+          ),
+          AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: listening
-                  ? AppColors.destructive.withAlpha(24)
+              color: recording
+                  ? AppColors.destructive
                   : (hovered ? AppColors.muted : AppColors.background),
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(
-                  color: listening ? AppColors.destructive.withAlpha(90) : AppColors.border),
+              borderRadius: BorderRadius.circular(recording ? 16 : AppRadius.md),
+              border: Border.all(color: recording ? AppColors.destructive : AppColors.border),
             ),
-            child: Icon(listening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                size: 16,
-                color: listening ? AppColors.destructive : AppColors.foreground),
+            child: transcribing
+                ? const Center(child: Spinner(size: 13))
+                : Icon(recording ? Icons.stop_rounded : Icons.mic_none_rounded,
+                    size: 16, color: recording ? Colors.white : AppColors.foreground),
           ),
-        ),
-      );
+        ]),
+      ),
+    );
+  }
 }

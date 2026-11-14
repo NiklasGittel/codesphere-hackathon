@@ -12,8 +12,15 @@ UI on the fly (charts, dependency maps, tables, action buttons).
 ```bash
 flutter create . --platforms web --project-name stratus   # only once, adds web/
 flutter pub get
-flutter run -d chrome
+flutter run -d chrome --dart-define=GEMINI_API_KEY=your-key
+# optional: --dart-define=GEMINI_MODEL=gemini-flash-latest
 ```
+
+Voice input: tap the mic, speak, pause. The audio is recorded as 16 kHz WAV and
+transcribed by Gemini (`GEMINI_MODEL`, default `gemini-flash-latest`). Without a
+key it falls back to the browser's speech recognition.
+
+> The key is compiled into the web app, so use a hackathon/demo key only.
 
 Try: "Why is my checkout slow?" → "Roll back…" → "Run rollback".
 Also: "Where can I cut cloud costs?", "What changed in the last 24h?".
