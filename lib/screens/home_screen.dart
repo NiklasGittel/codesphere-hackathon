@@ -5,6 +5,7 @@ import '../state/chat_controller.dart';
 import '../theme.dart';
 import '../widgets/composer.dart';
 import '../widgets/message_view.dart';
+import '../widgets/pages.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/start_page.dart';
 import '../widgets/ui/primitives.dart';
@@ -21,6 +22,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scroll = ScrollController();
   bool _forceScroll = false;
   String? _nav = NavIds.overview;
+
+  /// Page to return to when leaving a conversation.
+  String _returnNav = NavIds.overview;
 
   ChatController get c => widget.controller;
 
@@ -64,14 +68,39 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Card clicked on the start page.
   void _openFromStart(String title, String actionId) {
-    setState(() => _nav = actionId.startsWith('incident') ? NavIds.incidents : NavIds.savings);
+    final page = _nav ?? NavIds.overview;
+    setState(() {
+      _returnNav = const {NavIds.overview, NavIds.incidents, NavIds.savings}.contains(page) ? page : NavIds.overview;
+      _nav = actionId.startsWith('incident') || actionId.startsWith('resolved') ? NavIds.incidents : NavIds.savings;
+    });
     _open(title, actionId);
   }
 
   void _newChat() {
     c.showOverview();
-    setState(() => _nav = NavIds.overview);
+    setState(() {
+      _nav = NavIds.overview;
+      _returnNav = NavIds.overview;
+    });
   }
+
+  /// Back from a conversation to the page it was opened from.
+  void _back() {
+    c.showOverview();
+    setState(() => _nav = _returnNav);
+  }
+
+  Widget _page() => switch (_nav) {
+        NavIds.incidents => IncidentsPage(onOpen: _openFromStart),
+        NavIds.savings => SavingsPage(onOpen: _openFromStart),
+        _ => StartPage(onOpen: _openFromStart),
+      };
+
+  String get _pageTitle => switch (c.current == null ? _nav : _returnNav) {
+        NavIds.incidents => 'Incidents',
+        NavIds.savings => 'Savings',
+        _ => 'Overview',
+      };
 
   /// Sidebar navigation. Every entry leads somewhere in the demo.
   void _navigate(String id) {
@@ -136,9 +165,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ListenableBuilder(
                 listenable: c,
                 builder: (context, _) => Column(children: [
-                  _TopBar(topic: _topic, onBack: _newChat),
+                  _TopBar(topic: _topic, onBack: _back, page: _pageTitle),
                   Expanded(
-                    child: c.current == null ? StartPage(onOpen: _openFromStart) : _messages(),
+                    child: c.current == null ? _page() : _messages(),
                   ),
                   Composer(busy: c.busy, onSend: _send, onStop: c.stop),
                 ]),
@@ -183,9 +212,10 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.topic, required this.onBack});
+  const _TopBar({required this.topic, required this.onBack, required this.page});
   final String? topic;
   final VoidCallback onBack;
+  final String page;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -200,13 +230,13 @@ class _TopBar extends StatelessWidget {
               icon: Icons.arrow_back_rounded,
               variant: ButtonVariant.ghost,
               small: true,
-              tooltip: 'Back to overview',
+              tooltip: 'Back to $page',
               onPressed: onBack,
             ),
             const SizedBox(width: 6),
             HoverBuilder(
               onTap: onBack,
-              builder: (context, hovered) => Text('Overview',
+              builder: (context, hovered) => Text(page,
                   style: TextStyle(
                       fontSize: 14,
                       color: hovered ? AppColors.foreground : AppColors.mutedForeground)),
@@ -223,7 +253,7 @@ class _TopBar extends StatelessWidget {
             ),
           ] else ...[
             const SizedBox(width: 4),
-            const Text('Overview', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            Text(page, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
             const SizedBox(width: 12),
             const ShadBadge(label: 'Production · 4 providers · 38 services'),
           ],

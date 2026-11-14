@@ -22,44 +22,34 @@ class StartPage extends StatelessWidget {
     final now = DateTime.now();
     final greeting = now.hour < 12 ? 'Good morning' : (now.hour < 18 ? 'Good afternoon' : 'Good evening');
     final date = '${_weekdays[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}';
-    final critical = incidents.where((i) => i.severity == Severity.critical).length;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 12),
+      padding: const EdgeInsets.fromLTRB(32, 36, 32, 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1080),
+          constraints: const BoxConstraints(maxWidth: 1040),
           child: LayoutBuilder(builder: (context, box) {
             final wide = box.maxWidth >= 860;
-            final incidentCol = _IncidentsSection(onOpen: onOpen);
+            final incidentsCol = _IncidentsSection(onOpen: onOpen);
             final savingsCol = _SavingsSection(onOpen: onOpen);
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(greeting,
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w600, letterSpacing: -0.7)),
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.6)),
               const SizedBox(height: 4),
-              Text.rich(TextSpan(style: const TextStyle(fontSize: 14, color: AppColors.mutedForeground), children: [
-                TextSpan(text: '$date · '),
-                TextSpan(
-                    text: '$critical critical incident${critical == 1 ? '' : 's'}',
-                    style: const TextStyle(color: AppColors.destructive, fontWeight: FontWeight.w500)),
-                const TextSpan(text: ' and '),
-                const TextSpan(
-                    text: '€11.4k/month in savings',
-                    style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w500)),
-                const TextSpan(text: ' need your attention.'),
-              ])),
-              const SizedBox(height: 22),
-              _ProviderStrip(wide: wide),
-              const SizedBox(height: 28),
+              Text('$date · Monitoring 38 services across 4 providers',
+                  style: const TextStyle(fontSize: 14, color: AppColors.mutedForeground)),
+              const SizedBox(height: 24),
+              _ProviderBar(wide: wide),
+              const SizedBox(height: 36),
               if (wide)
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(flex: 3, child: incidentCol),
-                  const SizedBox(width: 24),
+                  Expanded(flex: 3, child: incidentsCol),
+                  const SizedBox(width: 32),
                   Expanded(flex: 2, child: savingsCol),
                 ])
               else ...[
-                incidentCol,
-                const SizedBox(height: 28),
+                incidentsCol,
+                const SizedBox(height: 32),
                 savingsCol,
               ],
               const SizedBox(height: 16),
@@ -71,104 +61,108 @@ class StartPage extends StatelessWidget {
   }
 }
 
-// ------------------------------------------------------- provider strip ----
+// ------------------------------------------------------------ providers ----
 
-class _ProviderStrip extends StatelessWidget {
-  const _ProviderStrip({required this.wide});
+class _ProviderBar extends StatelessWidget {
+  const _ProviderBar({required this.wide});
   final bool wide;
 
   static const _items = [
-    ('aws', 'Healthy', '12 services', Severity.success),
-    ('gcp', 'Degraded', '1 critical incident', Severity.critical),
-    ('azure', '2 warnings', '9 services', Severity.warning),
-    ('codesphere', 'Healthy', '5 workspaces', Severity.success),
+    ('aws', 'Healthy', Severity.success),
+    ('gcp', 'Degraded', Severity.critical),
+    ('azure', '2 warnings', Severity.warning),
+    ('codesphere', 'Healthy', Severity.success),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final tiles = [for (final i in _items) _ProviderTile(id: i.$1, status: i.$2, detail: i.$3, severity: i.$4)];
-    if (wide) {
-      return Row(children: [
-        for (var i = 0; i < tiles.length; i++) ...[
-          if (i > 0) const SizedBox(width: 12),
-          Expanded(child: tiles[i]),
-        ],
-      ]);
-    }
-    return LayoutBuilder(builder: (context, box) {
-      final w = (box.maxWidth - 12) / 2;
-      return Wrap(spacing: 12, runSpacing: 12, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
-    });
-  }
-}
-
-class _ProviderTile extends StatelessWidget {
-  const _ProviderTile({required this.id, required this.status, required this.detail, required this.severity});
-  final String id;
-  final String status;
-  final String detail;
-  final Severity severity;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = providerInfo(id);
-    final s = severityStyle(severity);
+    final items = [for (final i in _items) _ProviderItem(id: i.$1, status: i.$2, severity: i.$3)];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.background,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(children: [
-        Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: ProviderLogo(provider: id, size: 24),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(p.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 2),
-            Row(children: [
-              Dot(color: s.fg, size: 6),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text('$status · $detail',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.small.copyWith(fontSize: 11.5)),
-              ),
+      child: wide
+          ? Row(children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) Container(width: 1, height: 28, color: AppColors.border),
+                Expanded(child: items[i]),
+              ],
+            ])
+          : Wrap(runSpacing: 12, children: [
+              for (final item in items) FractionallySizedBox(widthFactor: 0.5, child: item),
             ]),
-          ]),
-        ),
-      ]),
     );
   }
 }
 
-// ------------------------------------------------------------ sections ----
+class _ProviderItem extends StatelessWidget {
+  const _ProviderItem({required this.id, required this.status, required this.severity});
+  final String id;
+  final String status;
+  final Severity severity;
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.badge, this.badgeColor});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(children: [
+          ProviderLogo(provider: id, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(providerInfo(id).name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Row(children: [
+                Dot(color: severityStyle(severity).fg, size: 6),
+                const SizedBox(width: 6),
+                Text(status, style: AppText.small.copyWith(fontSize: 11.5)),
+              ]),
+            ]),
+          ),
+        ]),
+      );
+}
+
+// ------------------------------------------------------------- sections ----
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.title, this.meta);
   final String title;
-  final String badge;
-  final Color? badgeColor;
+  final String meta;
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: Row(children: [
-          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: -0.2)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(width: 8),
-          ShadBadge(label: badge, color: badgeColor),
-          const Spacer(),
-          const Text('View all', style: AppText.muted),
+          Text(meta, style: const TextStyle(fontSize: 13, color: AppColors.mutedForeground)),
+        ]),
+      );
+}
+
+/// Bordered list container with dividers between rows.
+class _ListCard extends StatelessWidget {
+  const _ListCard({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.border),
+            children[i],
+          ],
         ]),
       );
 }
@@ -178,13 +172,21 @@ class _IncidentsSection extends StatelessWidget {
   final OpenTopic onOpen;
 
   @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _SectionHeader(title: 'Incidents', badge: '${incidents.length} open', badgeColor: AppColors.destructive),
-        for (var i = 0; i < incidents.length; i++) ...[
-          if (i > 0) const SizedBox(height: 12),
-          _IncidentCard(incident: incidents[i], onTap: () => onOpen(incidents[i].title, incidents[i].id)),
-        ],
-      ]);
+  Widget build(BuildContext context) {
+    final critical = incidents.where((i) => i.severity == Severity.critical).toList();
+    final others = incidents.where((i) => i.severity != Severity.critical).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _SectionTitle('Incidents', '${incidents.length} open'),
+      for (final i in critical) ...[
+        _CriticalIncident(incident: i, onTap: () => onOpen(i.title, i.id)),
+        const SizedBox(height: 12),
+      ],
+      if (others.isNotEmpty)
+        _ListCard(children: [
+          for (final i in others) _IncidentRow(incident: i, onTap: () => onOpen(i.title, i.id)),
+        ]),
+    ]);
+  }
 }
 
 class _SavingsSection extends StatelessWidget {
@@ -192,281 +194,207 @@ class _SavingsSection extends StatelessWidget {
   final OpenTopic onOpen;
 
   @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const _SectionHeader(title: 'Savings', badge: '€11.4k / month', badgeColor: AppColors.success),
-        _SavingsHero(onTap: () => onOpen('Reduce cloud spend by ${totalSuggestion.percent}', totalSuggestion.id)),
-        for (final s in suggestions) ...[
-          const SizedBox(height: 10),
-          _SuggestionCard(suggestion: s, onTap: () => onOpen(s.title, s.id)),
-        ],
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _SectionTitle('Savings', '${suggestions.length + 1} opportunities'),
+        _ListCard(children: [
+          _SavingsTotal(onTap: () => onOpen('Reduce cloud spend by ${totalSuggestion.percent}', totalSuggestion.id)),
+          for (final s in suggestions) _SuggestionRow(suggestion: s, onTap: () => onOpen(s.title, s.id)),
+        ]),
       ]);
 }
 
-// --------------------------------------------------------------- cards ----
+// --------------------------------------------------------------- items ----
 
-class _IncidentCard extends StatelessWidget {
-  const _IncidentCard({required this.incident, required this.onTap});
+class _CriticalIncident extends StatelessWidget {
+  const _CriticalIncident({required this.incident, required this.onTap});
   final Incident incident;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final s = severityStyle(incident.severity);
-    final critical = incident.severity == Severity.critical;
+    final red = severityStyle(incident.severity).fg;
     return HoverBuilder(
       onTap: onTap,
       builder: (context, hovered) => AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: AppColors.background,
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(
-            color: hovered
-                ? (critical ? s.fg.withAlpha(130) : AppColors.borderStrong)
-                : (critical ? s.border : AppColors.border),
-          ),
+          border: Border.all(color: hovered ? AppColors.borderStrong : AppColors.border),
           boxShadow: [
             BoxShadow(
-              color: Color(hovered ? 0x14000000 : 0x08000000),
-              blurRadius: hovered ? 18 : 3,
-              offset: Offset(0, hovered ? 6 : 1),
+              color: Color(hovered ? 0x10000000 : 0x00000000),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            ShadBadge(
-              label: critical ? 'Critical' : 'Warning',
-              color: s.fg,
-              leading: Dot(color: s.fg, size: 6),
-            ),
-            const SizedBox(width: 10),
-            Text('Ongoing · ${incident.since}', style: AppText.small),
+            Dot(color: red, size: 7),
+            const SizedBox(width: 8),
+            Text('Critical · ongoing ${incident.since}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: red)),
             const Spacer(),
             for (final p in incident.providers)
               Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Tooltip(
-                  message: providerInfo(p).name,
-                  child: ProviderLogo(provider: p, size: 16),
-                ),
+                padding: const EdgeInsets.only(left: 8),
+                child: Tooltip(message: providerInfo(p).name, child: ProviderLogo(provider: p, size: 16)),
               ),
           ]),
-          const SizedBox(height: 12),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(height: 14),
+          Text(incident.title,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
+          const SizedBox(height: 4),
+          Text(incident.summary, style: AppText.muted.copyWith(fontSize: 13.5)),
+          const SizedBox(height: 18),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(child: Sparkline(values: incident.trend, color: red, height: 48)),
+            const SizedBox(width: 24),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(incident.impact,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -0.5)),
+              Text(incident.impactLabel, style: AppText.small.copyWith(fontSize: 11.5)),
+            ]),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: hovered ? 26 : 0,
+              alignment: Alignment.centerRight,
+              child: hovered
+                  ? const Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.foreground)
+                  : null,
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+class _IncidentRow extends StatelessWidget {
+  const _IncidentRow({required this.incident, required this.onTap});
+  final Incident incident;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => HoverBuilder(
+        onTap: onTap,
+        builder: (context, hovered) => AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          color: hovered ? AppColors.subtle : AppColors.background,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(children: [
+            Dot(color: severityStyle(incident.severity).fg, size: 7),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(incident.title,
-                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, letterSpacing: -0.2)),
-                const SizedBox(height: 3),
-                Text(incident.summary, style: AppText.muted.copyWith(fontSize: 13)),
+                Text(incident.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(incident.summary,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.small),
               ]),
             ),
             const SizedBox(width: 16),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(incident.impact,
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.4,
-                      color: critical ? s.fg : AppColors.foreground)),
-              Text(incident.impactLabel, style: AppText.small.copyWith(fontSize: 11.5)),
+              Text(incident.impact, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+              Text(incident.impactLabel, style: AppText.small.copyWith(fontSize: 11)),
             ]),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: hovered ? AppColors.foreground : AppColors.borderStrong),
           ]),
-          const SizedBox(height: 12),
-          Sparkline(values: incident.trend, color: s.fg, height: critical ? 44 : 32),
-          const SizedBox(height: 10),
-          Row(children: [
-            Text('Investigate',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: hovered ? AppColors.foreground : AppColors.mutedForeground)),
-            AnimatedPadding(
-              duration: const Duration(milliseconds: 160),
-              padding: EdgeInsets.only(left: hovered ? 8 : 4),
-              child: Icon(Icons.arrow_forward_rounded,
-                  size: 15, color: hovered ? AppColors.foreground : AppColors.mutedForeground),
-            ),
-          ]),
-        ]),
-      ),
-    );
-  }
+        ),
+      );
 }
 
-class _SavingsHero extends StatelessWidget {
-  const _SavingsHero({required this.onTap});
+class _SavingsTotal extends StatelessWidget {
+  const _SavingsTotal({required this.onTap});
   final VoidCallback onTap;
-
-  static const _green = Color(0xFF4ADE80);
 
   @override
   Widget build(BuildContext context) {
     const t = totalSuggestion;
-    final budgetFrac = t.budget / t.forecast;
-    final keepFrac = (t.forecast - t.saving) / t.forecast;
+    final frac = t.saving / t.forecast;
     return HoverBuilder(
       onTap: onTap,
       builder: (context, hovered) => AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: hovered ? AppColors.primaryHover : AppColors.primary,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          boxShadow: [
-            BoxShadow(
-              color: Color(hovered ? 0x26000000 : 0x14000000),
-              blurRadius: hovered ? 20 : 8,
-              offset: Offset(0, hovered ? 8 : 2),
-            ),
-          ],
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Reduce cloud spend by',
-              style: TextStyle(fontSize: 12.5, color: Color(0xB3FFFFFF))),
-          const SizedBox(height: 4),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(t.percent,
-                style: const TextStyle(
-                    fontSize: 34, fontWeight: FontWeight.w600, letterSpacing: -1.2, color: Colors.white, height: 1.1)),
-            const SizedBox(width: 10),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Text('${t.savings} / month',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: _green)),
-            ),
-          ]),
-          const SizedBox(height: 16),
-          LayoutBuilder(builder: (context, box) {
-            final w = box.maxWidth;
-            return SizedBox(
-              height: 26,
-              child: Stack(clipBehavior: Clip.none, children: [
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 8,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 1, end: keepFrac),
-                    duration: const Duration(milliseconds: 1100),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, v, _) => Row(children: [
-                      Container(
-                        width: w * v,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Color(0xE6FFFFFF),
-                          borderRadius: BorderRadius.horizontal(left: Radius.circular(5)),
-                        ),
-                      ),
-                      Expanded(
-                        child: Container(
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: _green,
-                            borderRadius: BorderRadius.horizontal(right: Radius.circular(5)),
-                          ),
-                        ),
-                      ),
-                    ]),
-                  ),
-                ),
-                Positioned(
-                  left: w * budgetFrac - 1,
-                  top: 3,
-                  child: Container(width: 2, height: 20, color: const Color(0xFFF87171)),
-                ),
+        duration: const Duration(milliseconds: 120),
+        color: hovered ? AppColors.subtle : AppColors.background,
+        padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                Text(t.savings,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.6)),
+                const SizedBox(width: 6),
+                const Text('/ month', style: TextStyle(fontSize: 13, color: AppColors.mutedForeground)),
               ]),
-            );
-          }),
-          const SizedBox(height: 8),
-          Row(children: [
-            Text('Forecast €${t.forecast}k',
-                style: const TextStyle(fontSize: 11.5, color: Color(0x99FFFFFF))),
-            const SizedBox(width: 10),
-            Text('Budget €${t.budget}k',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFFF87171))),
-            const Spacer(),
-            Text('After savings €${(t.forecast - t.saving).toStringAsFixed(1)}k',
-                style: const TextStyle(fontSize: 11.5, color: _green)),
-          ]),
-          const SizedBox(height: 16),
-          Row(children: [
-            const Text('Review 23 opportunities',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
-            AnimatedPadding(
-              duration: const Duration(milliseconds: 160),
-              padding: EdgeInsets.only(left: hovered ? 8 : 4),
-              child: const Icon(Icons.arrow_forward_rounded, size: 15, color: Colors.white),
-            ),
-          ]),
+              const SizedBox(height: 2),
+              Text('${t.percent} of the €${t.forecast}k forecast', style: AppText.small),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, box) => Stack(children: [
+                  Container(
+                    height: 6,
+                    decoration: BoxDecoration(color: AppColors.muted, borderRadius: BorderRadius.circular(3)),
+                  ),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: frac),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, v, _) => Container(
+                      width: box.maxWidth * v,
+                      height: 6,
+                      decoration: BoxDecoration(color: AppColors.success, borderRadius: BorderRadius.circular(3)),
+                    ),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          Icon(Icons.chevron_right_rounded,
+              size: 18, color: hovered ? AppColors.foreground : AppColors.borderStrong),
         ]),
       ),
     );
   }
 }
 
-class _SuggestionCard extends StatelessWidget {
-  const _SuggestionCard({required this.suggestion, required this.onTap});
+class _SuggestionRow extends StatelessWidget {
+  const _SuggestionRow({required this.suggestion, required this.onTap});
   final Suggestion suggestion;
   final VoidCallback onTap;
 
-  IconData get _icon => switch (suggestion.id) {
-        'suggest_gpu' => Icons.memory_rounded,
-        'rightsize' => Icons.compress_rounded,
-        'suggest_egress' => Icons.swap_horiz_rounded,
-        _ => Icons.savings_outlined,
-      };
-
   @override
-  Widget build(BuildContext context) {
-    final fixes = suggestion.tag == 'Fixes incident';
-    return HoverBuilder(
-      onTap: onTap,
-      builder: (context, hovered) => AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
+  Widget build(BuildContext context) => HoverBuilder(
+        onTap: onTap,
+        builder: (context, hovered) => AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
           color: hovered ? AppColors.subtle : AppColors.background,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: hovered ? AppColors.borderStrong : AppColors.border),
-        ),
-        child: Row(children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(color: AppColors.muted, borderRadius: BorderRadius.circular(AppRadius.md)),
-            child: Icon(_icon, size: 17, color: AppColors.foreground),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(suggestion.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 2),
-              Text(suggestion.summary,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.small),
-              const SizedBox(height: 8),
-              Wrap(spacing: 6, runSpacing: 6, children: [
-                ProviderBadge(provider: suggestion.provider),
-                ShadBadge(
-                    label: suggestion.tag,
-                    color: fixes ? AppColors.chartPalette[0] : AppColors.success),
+          padding: const EdgeInsets.fromLTRB(20, 13, 16, 13),
+          child: Row(children: [
+            ProviderLogo(provider: suggestion.provider, size: 16),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(suggestion.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(suggestion.summary, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.small),
               ]),
-            ]),
-          ),
-          const SizedBox(width: 12),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            ),
+            const SizedBox(width: 12),
             Text(suggestion.savings,
-                style: AppText.mono(size: 15, color: AppColors.success, weight: FontWeight.w600)),
-            const Text('/ month', style: AppText.small),
+                style: AppText.mono(size: 13, color: AppColors.success, weight: FontWeight.w600)),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: hovered ? AppColors.foreground : AppColors.borderStrong),
           ]),
-        ]),
-      ),
-    );
-  }
+        ),
+      );
 }

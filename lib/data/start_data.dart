@@ -112,3 +112,55 @@ const suggestions = [
     tag: 'Fixes incident',
   ),
 ];
+
+class ResolvedIncident {
+  const ResolvedIncident({
+    required this.id,
+    required this.title,
+    required this.summary,
+    required this.severity,
+    required this.resolved,
+    required this.duration,
+    required this.providers,
+  });
+  final String id;
+  final String title;
+  final String summary;
+  final Severity severity;
+  final String resolved;
+  final String duration;
+  final List<String> providers;
+}
+
+const resolvedIncidents = [
+  ResolvedIncident(
+    id: 'resolved_cdn',
+    title: 'Product images loading slowly',
+    summary: 'CDN cache purge after storefront release #479',
+    severity: Severity.warning,
+    resolved: '2 d ago',
+    duration: '38 min',
+    providers: ['codesphere'],
+  ),
+  ResolvedIncident(
+    id: 'resolved_dns',
+    title: 'Intermittent DNS timeouts',
+    summary: 'Azure DNS zone misconfiguration, rolled back',
+    severity: Severity.critical,
+    resolved: '5 d ago',
+    duration: '1 h 12 min',
+    providers: ['azure', 'aws'],
+  ),
+];
+
+/// Savings opportunities not shown on the overview.
+const moreSuggestions = [
+  Suggestion(
+    id: 'suggest_volumes',
+    title: 'Delete unattached volumes',
+    summary: '47 disks detached for more than 30 days',
+    savings: '€1.1k',
+    provider: 'azure',
+    tag: 'No risk',
+  ),
+];

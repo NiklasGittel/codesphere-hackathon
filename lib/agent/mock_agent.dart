@@ -123,6 +123,12 @@ class MockAgent implements AgentService {
         return suggestGpu(this);
       case 'suggest_egress':
         return suggestEgress(this);
+      case 'suggest_volumes':
+        return costs(this);
+      case 'resolved_cdn':
+      case 'resolved_dns':
+        return simple(
+            'This incident is resolved. Ask me for the timeline, the root cause or what we changed to prevent it.');
       case 'cancel':
         return simple(
             'Okay, nothing was changed. Let me know if you want to look at other options.');
