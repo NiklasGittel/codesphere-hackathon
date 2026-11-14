@@ -5,7 +5,9 @@ import '../state/chat_controller.dart';
 import '../theme.dart';
 import '../widgets/composer.dart';
 import '../widgets/message_view.dart';
+import '../live/live_client.dart';
 import '../widgets/pages.dart';
+import '../widgets/settings_dialog.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/start_page.dart';
 import '../widgets/ui/primitives.dart';
@@ -84,6 +86,36 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _openSettings() async {
+    final result = await showSettingsDialog(context, onReset: _resetDemo);
+    if (result == 'reset' && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Demo reset. Back to the open incident.'),
+        behavior: SnackBarBehavior.floating,
+        width: 420,
+        backgroundColor: AppColors.primary,
+      ));
+    }
+  }
+
+  /// Full demo reset: live Cloud Run state (if connected), chats, simulation.
+  Future<void> _resetDemo() async {
+    Object? liveError;
+    if (LiveClient.configured) {
+      try {
+        await LiveClient().reset();
+      } catch (e) {
+        liveError = e;
+      }
+    }
+    c.clearAll();
+    setState(() {
+      _nav = NavIds.overview;
+      _returnNav = NavIds.overview;
+    });
+    if (liveError != null) throw liveError;
+  }
+
   /// Back from a conversation to the page it was opened from.
   void _back() {
     c.showOverview();
@@ -113,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'recent_changes': ('Production changes', 'nav_changes'),
     };
     if (id == NavIds.settings) {
-      setState(() => _nav = id);
+      _openSettings();
       return;
     }
     if (id.startsWith('chat:')) {

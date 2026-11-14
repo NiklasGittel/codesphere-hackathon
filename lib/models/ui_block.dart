@@ -92,10 +92,14 @@ class StatItem {
 }
 
 class StatsBlock extends UiBlock {
-  const StatsBlock({required this.items});
+  const StatsBlock({required this.items, this.live});
   final List<StatItem> items;
 
+  /// Live refresh kind (e.g. "status"); null = static.
+  final String? live;
+
   factory StatsBlock.fromJson(Map<String, dynamic> j) => StatsBlock(
+        live: _str(j['live']),
         items: _maps(j['items'])
             .map((m) => StatItem(
                   label: _str(m['label']) ?? '',
@@ -134,8 +138,11 @@ class LineChartBlock extends UiBlock {
     this.highlightFrom,
     this.highlightLabel,
     this.highlightSeverity = Severity.critical,
+    this.live,
   });
 
+  /// Live refresh kind (e.g. "latency"); null = static.
+  final String? live;
   final String title;
   final String? subtitle;
   final String? source;
@@ -149,6 +156,7 @@ class LineChartBlock extends UiBlock {
   final Severity highlightSeverity;
 
   factory LineChartBlock.fromJson(Map<String, dynamic> j) => LineChartBlock(
+        live: _str(j['live']),
         title: _str(j['title']) ?? '',
         subtitle: _str(j['subtitle']),
         source: _str(j['source']),
@@ -318,7 +326,11 @@ class TableBlock extends UiBlock {
       required this.columns,
       required this.rows,
       this.subtitle,
-      this.highlightRows = const {}});
+      this.highlightRows = const {},
+      this.live});
+
+  /// Live refresh kind (e.g. "revisions"); null = static.
+  final String? live;
   final String title;
   final String? subtitle;
   final List<String> columns;
@@ -326,6 +338,7 @@ class TableBlock extends UiBlock {
   final Set<int> highlightRows;
 
   factory TableBlock.fromJson(Map<String, dynamic> j) => TableBlock(
+        live: _str(j['live']),
         title: _str(j['title']) ?? '',
         subtitle: _str(j['subtitle']),
         columns: _strings(j['columns']),

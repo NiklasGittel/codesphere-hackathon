@@ -175,6 +175,21 @@ flutter run -d chrome --dart-define=GEMINI_API_KEY=your-key
 
 Without a key, both parts fall back to scripted playbooks, so the demo always works.
 
+### Live mode: a real Cloud Run service (optional)
+
+`payment-svc` can run for real on Google Cloud Run with a planted bad deploy, and Stratus rolls it back live:
+
+```bash
+gcloud auth login && gcloud auth application-default login
+PROJECT=<project-id> ./infra/gcp/deploy_payment_svc.sh      # v481 healthy, v482 bad (+800 ms, 8 % errors)
+# backend/.env: LIVE_GCP_PROJECT=<project-id>, then restart the backend
+flutter run -d chrome --dart-define=GEMINI_API_KEY=... --dart-define=STRATUS_BACKEND=http://localhost:8080
+PROJECT=<project-id> ./infra/gcp/reset_payment_svc.sh       # before each rehearsal
+```
+
+The backend measures the service every 2 s (`/api/live/payment-svc`). After human approval and the Decisions
+API policy check, `rollback_payment_svc` shifts Cloud Run traffic back to the healthy revision.
+
 ---
 
 ## Demo script

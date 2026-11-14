@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import '../../gemini/gemini_client.dart';
 import '../../models/ui_block.dart';
 import '../agent_service.dart';
+import '../../live/live_client.dart';
+import 'live_tools.dart';
 import 'policy.dart';
 import 'prompt.dart';
 import 'world.dart';
@@ -21,8 +23,9 @@ class GeminiAgent implements AgentService {
   /// Used when Gemini is unreachable on the first turn (demo safety net).
   final AgentService? fallback;
 
-  final InfraWorld world = InfraWorld();
+  InfraWorld world = InfraWorld();
   final ActionPolicy _policy = ActionPolicy();
+  final LiveTools _live = LiveTools();
   String _lastUserText = '';
   /// One Gemini history per conversation.
   final Map<String, List<Map<String, dynamic>>> _sessions = {};
@@ -47,6 +50,7 @@ class GeminiAgent implements AgentService {
   void reset() {
     _sessions.clear();
     _data.clear();
+    world = InfraWorld(); // back to the open incident
     fallback?.reset();
   }
 
@@ -86,8 +90,11 @@ class GeminiAgent implements AgentService {
           content = await _client
               .generate(
                 contents: history,
-                system: systemPrompt(DateTime.now()),
-                functions: functionDeclarations,
+                system: systemPrompt(DateTime.now(), live: LiveClient.configured),
+                functions: [
+                  ...functionDeclarations,
+                  if (LiveClient.configured) LiveTools.declaration,
+                ],
               )
               .timeout(const Duration(seconds: 60));
         } catch (e) {
@@ -205,10 +212,40 @@ class GeminiAgent implements AgentService {
           response['policy'] = policy;
           return;
         }
-        yield* _dataTool(name, args, response);
+        if (action == 'rollback_payment_svc' && LiveClient.configured) {
+          yield* _liveRollback(response);
+          world.call(name, args); // keep the simulated estate consistent
+        } else {
+          yield* _dataTool(name, args, response);
+        }
         response['policy'] = policy;
+      case LiveTools.toolName:
+        final liveId = 'live${_stepSeq++}';
+        yield StepStarted(liveId, 'Reading payment-svc live from Cloud Run', source: 'gcp');
+        try {
+          final result = await _live.fetch();
+          _data.addAll(result.blocks);
+          response.addAll(result.toResponse());
+          yield StepCompleted(liveId, detail: result.detail);
+        } catch (e) {
+          response['error'] = 'live data unavailable: $e';
+          yield StepCompleted(liveId, detail: 'unavailable');
+        }
       default:
         yield* _dataTool(name, args, response);
+    }
+  }
+
+  Stream<AgentEvent> _liveRollback(Map<String, dynamic> response) async* {
+    final stepId = 'live${_stepSeq++}';
+    yield StepStarted(stepId, 'Shifting Cloud Run traffic to the healthy revision', source: 'gcp');
+    try {
+      final result = await _live.rollback();
+      response.addAll(result.toResponse());
+      yield StepCompleted(stepId, detail: result.detail);
+    } catch (e) {
+      response['error'] = 'live rollback failed: $e';
+      yield StepCompleted(stepId, detail: 'failed');
     }
   }
 

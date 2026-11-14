@@ -32,7 +32,7 @@ MOCK_STEP_DELAY_S = float(os.getenv("MOCK_STEP_DELAY_S", "1.4"))
 # --- Traffic ----------------------------------------------------------------
 BASE_RPS = 50                 # checkout requests per second, normal day
 INCIDENT_TRAFFIC_MULTIPLIER = 10
-START_IN_INCIDENT = True      # demo starts on Black Friday (checkout already failing)
+START_IN_INCIDENT = os.getenv("START_IN_INCIDENT", "true").lower() == "true"  # demo starts on Black Friday (checkout already failing)
 INCIDENT_STARTED_MINUTES_AGO = 8
 INCIDENT_RAMP_S = 5           # seconds until Black Friday traffic is at full level
 

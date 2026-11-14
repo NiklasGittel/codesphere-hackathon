@@ -238,6 +238,7 @@ const API = new URLSearchParams(location.search).get("api")
   || (location.protocol.startsWith("http") && location.port === "8080" ? location.origin : "http://localhost:8080");
 const BASE_PRICE = 29.0;
 const CHECKOUT_TIMEOUT_MS = 3000;
+const SHOP_ABORT_MS = 8000;      // the shop gives up on a checkout after 8 s
 
 /* ---------- state ---------- */
 const state = { cart: [], color: { c: "#15181c", n: "Midnight" }, size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
@@ -324,7 +325,7 @@ async function apiCheckout() {
   const rid = "req_" + Math.random().toString(16).slice(2, 10);
   if (state.live) {
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS + 2000);
+    const to = setTimeout(() => ctrl.abort(), SHOP_ABORT_MS);
     try {
       const r = await fetch(API + "/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: state.cart }), signal: ctrl.signal });

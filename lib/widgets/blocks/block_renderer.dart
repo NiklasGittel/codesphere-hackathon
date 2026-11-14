@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/ui_block.dart';
 import 'basic_blocks.dart';
 import 'insight_blocks.dart';
+import 'live_block.dart';
 import 'line_chart_card.dart';
 import 'rich_blocks.dart';
 
@@ -15,7 +16,18 @@ class BlockRenderer extends StatelessWidget {
   final void Function(FollowUpsBlock, String) onAsk;
 
   @override
-  Widget build(BuildContext context) => switch (block) {
+  Widget build(BuildContext context) {
+    final live = switch (block) {
+      LineChartBlock b => b.live,
+      StatsBlock b => b.live,
+      TableBlock b => b.live,
+      _ => null,
+    };
+    if (live == null) return _render(block);
+    return LiveBlock(kind: live, initial: block, render: _render);
+  }
+
+  Widget _render(UiBlock block) => switch (block) {
         StatsBlock b => StatsView(block: b),
         LineChartBlock b => LineChartCard(block: b),
         BarChartBlock b => BarChartCard(block: b),

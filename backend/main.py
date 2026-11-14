@@ -34,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import agent
+import live_gcp
 import config
 from infra import SERVICES, infra
 
@@ -42,12 +43,14 @@ log = logging.getLogger("api")
 
 app = FastAPI(title="AI SRE Demo Backend", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(live_gcp.router)
 
 
 @app.on_event("startup")
 def _start_sampler():
     """Start the background thread that records metric history."""
     threading.Thread(target=infra.sample_loop, daemon=True).start()
+    threading.Thread(target=live_gcp.probe_loop, daemon=True).start()
     log.info("started; agent mode=%s model=%s", config.AGENT_MODE, config.GEMINI_MODEL)
 
 
@@ -109,6 +112,23 @@ async def checkout(req: CheckoutRequest | None = None):
     """
     latency_ms = infra.checkout_latency_ms()
     rid = "req_" + uuid.uuid4().hex[:8]
+    if live_gcp.CHECKOUT_USES_PAYMENT_SVC:
+        # Real dependency: payment authorization on Google Cloud Run.
+        try:
+            pay = await asyncio.to_thread(live_gcp.authorize)
+        except Exception as e:  # payment-svc unreachable
+            pay = {"ms": 0, "ok": False, "revision": "", "error": str(e)}
+        if pay.get("timeout"):
+            log.warning("checkout %s failed: payment-svc timeout after %sms", rid, pay["ms"])
+            return JSONResponse(status_code=504, content={
+                "status": "failed", "error": "PAYMENT_TIMEOUT", "request_id": rid,
+                "message": f"payment-svc did not answer within {live_gcp.PAYMENT_TIMEOUT_S:g} s"})
+        if not pay["ok"]:
+            log.warning("checkout %s failed: payment-svc error (revision %s)", rid, pay.get("revision"))
+            return JSONResponse(status_code=502, content={
+                "status": "failed", "error": "PAYMENT_FAILED", "request_id": rid,
+                "message": f"payment-svc returned an error (revision {pay.get('revision') or 'unknown'})"})
+        latency_ms = max(0, latency_ms - config.CHECKOUT_BASE_LATENCY_MS * 0.5) + pay["ms"]
     if latency_ms > config.CHECKOUT_TIMEOUT_MS:
         await asyncio.sleep(config.CHECKOUT_TIMEOUT_MS / 1000)
         log.warning("checkout %s failed: timeout after %sms (would take %sms)", rid, config.CHECKOUT_TIMEOUT_MS, round(latency_ms))

@@ -1,6 +1,9 @@
 import 'world.dart';
 
-String systemPrompt(DateTime now) {
+const _livePrompt =
+    '9. LIVE RESOURCE: payment-svc really runs on Google Cloud Run. For anything about payment-svc, checkout latency right now, or deploy #482, call get_live_payment_svc and say clearly that this is live data. Show live_status and live_latency, and live_revisions to prove what the deploy changed (env diff). The rollback_payment_svc action really shifts Cloud Run traffic to the healthy revision; afterwards call get_live_payment_svc again (after the result) and show live_latency so the audience sees the drop.\n';
+
+String systemPrompt(DateTime now, {bool live = false}) {
   const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   return '''
@@ -19,7 +22,7 @@ HOW YOU WORK
 6. Available production actions for execute_action: ${InfraWorld.actions.join(', ')}.
 7. If something is not covered by any tool, say so in one sentence and offer what you can show.
 8. Answer in the language of the user.
-
+${live ? _livePrompt : ''}
 COMPONENT SCHEMAS FOR render_ui (a JSON object string with "type")
 - brief: {"type":"brief","severity":"critical|warning|success|info","title":"...","badge":"short tag like Ongoing · 15 h","items":[{"label":"What|Impact|Cause|Fix|Savings|Effort","text":"..."}]}
 - stats: {"type":"stats","items":[{"label":"...","value":"...","delta":"...","good":true}]}  (good: true green, false red, omit = neutral)
