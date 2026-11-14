@@ -16,6 +16,7 @@ ProviderInfo providerInfo(String? id) => switch (id?.toLowerCase()) {
       'azure' => const ProviderInfo('Azure', Color(0xFF0078D4)),
       'codesphere' => const ProviderInfo('codesphere', Color(0xFF7C3AED)),
       'gemini' => const ProviderInfo('Gemini', Color(0xFF1A73E8)),
+      'gemini-decisions' => const ProviderInfo('Gemini Decisions', Color(0xFF0B57D0)),
       _ => ProviderInfo(id ?? 'Unknown', AppColors.mutedForeground),
     };
 

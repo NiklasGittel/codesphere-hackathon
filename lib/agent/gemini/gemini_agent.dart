@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../gemini/gemini_client.dart';
 import '../../models/ui_block.dart';
 import '../agent_service.dart';
+import 'policy.dart';
 import 'prompt.dart';
 import 'world.dart';
 
@@ -21,6 +22,8 @@ class GeminiAgent implements AgentService {
   final AgentService? fallback;
 
   final InfraWorld world = InfraWorld();
+  final ActionPolicy _policy = ActionPolicy();
+  String _lastUserText = '';
   /// One Gemini history per conversation.
   final Map<String, List<Map<String, dynamic>>> _sessions = {};
   String _session = 'default';
@@ -63,6 +66,7 @@ class GeminiAgent implements AgentService {
     // a function call without a response and break every later request.
     final history = _history;
     final snapshot = history.length;
+    _lastUserText = _userText(message, actionId);
     var clean = false;
     history.add({
       'role': 'user',
@@ -187,15 +191,35 @@ class GeminiAgent implements AgentService {
         yield BlockEmitted(UiBlock.fromJson(component));
         response['ok'] = true;
         await Future<void>.delayed(const Duration(milliseconds: 250));
+      case 'execute_action':
+        // Human-in-the-loop guard via the Gemini Decisions API.
+        final action = '${args['action']}';
+        final checkId = 'policy${_stepSeq++}';
+        yield StepStarted(checkId, 'Policy check: was this change approved?', source: 'gemini-decisions');
+        final verdict = await _policy.check(action: action, lastUserMessage: _lastUserText);
+        yield StepCompleted(checkId, detail: verdict.detail);
+        final policy = {'confirmed_probability': verdict.confirmed, 'risk': verdict.risk};
+        if (!verdict.allowed) {
+          response['error'] = 'Blocked by policy: the user has not explicitly confirmed "$action". '
+              'Show the plan with a Confirm button (id "confirm:$action") and wait for the click.';
+          response['policy'] = policy;
+          return;
+        }
+        yield* _dataTool(name, args, response);
+        response['policy'] = policy;
       default:
-        final stepId = 'tool${_stepSeq++}';
-        yield StepStarted(stepId, toolLabel(name, args), source: toolSource(name, args));
-        await Future<void>.delayed(const Duration(milliseconds: 350));
-        final result = world.call(name, args);
-        _data.addAll(result.blocks);
-        response.addAll(result.toResponse());
-        yield StepCompleted(stepId, detail: result.detail);
+        yield* _dataTool(name, args, response);
     }
+  }
+
+  Stream<AgentEvent> _dataTool(String name, Map<String, dynamic> args, Map<String, dynamic> response) async* {
+    final stepId = 'tool${_stepSeq++}';
+    yield StepStarted(stepId, toolLabel(name, args), source: toolSource(name, args));
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    final result = world.call(name, args);
+    _data.addAll(result.blocks);
+    response.addAll(result.toResponse());
+    yield StepCompleted(stepId, detail: result.detail);
   }
 
   Stream<AgentEvent> _type(String text) async* {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import '../gemini/decisions_client.dart';
 import '../gemini/gemini_client.dart';
 import '../models/ui_block.dart';
 import 'agent_service.dart';
@@ -15,6 +16,7 @@ part 'mock_scenarios.dart';
 /// LLM will produce through a `render_ui` function call.
 class MockAgent implements AgentService {
   final _gemini = GeminiClient();
+  final _decisions = DecisionsClient();
 
   @override
   void reset() {}
@@ -31,17 +33,35 @@ class MockAgent implements AgentService {
     final useGemini = GeminiClient.configured;
     yield StepStarted('route', 'Understanding the question', source: useGemini ? 'gemini' : null);
     String? intent;
+    String via = 'keywords';
     if (useGemini) {
+      // 1st choice: Gemini Decisions API (closed-set choice, calibrated).
       try {
-        intent = await _gemini
-            .classify(message, intents, context: _routingContext)
-            .timeout(const Duration(seconds: 8));
-      } catch (_) {
-        intent = null;
+        final answers = await _decisions.decide('$_routingContext\n\nUser question: "$message"', {
+          'intent': DecisionsClient.choice('Which intent best matches the user question?', intents),
+        });
+        final answer = answers['intent'] as Map?;
+        final choice = answer?['choice'];
+        if (choice is String && intents.containsKey(choice)) {
+          intent = choice;
+          final conf = (answer?['confidence'] as num?)?.toDouble();
+          via = conf == null ? 'Decisions API' : 'Decisions API · ${(conf * 100).round()}%';
+        }
+      } catch (_) {}
+      // 2nd choice: generateContent with a JSON response schema.
+      if (intent == null) {
+        try {
+          intent = await _gemini
+              .classify(message, intents, context: _routingContext)
+              .timeout(const Duration(seconds: 8));
+          if (intent != null) via = 'structured output';
+        } catch (_) {
+          intent = null;
+        }
       }
     }
     intent ??= keywordIntent(message);
-    yield StepCompleted('route', detail: intentLabels[intent] ?? intent);
+    yield StepCompleted('route', detail: '${intentLabels[intent] ?? intent} · $via');
     yield* _action(intent);
   }
 

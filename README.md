@@ -34,31 +34,80 @@ and the people who feel the impact (business, management) can't read any of thes
 
 ---
 
-## How we use our technology partners
+## Built on Google Gemini
 
-### Google DeepMind – Gemini
+Gemini is not a chatbot bolted onto a dashboard. It **is** the product. Each step from your question to an
+approved fix runs on a different Gemini capability:
 
-Gemini is the brain of Stratus. We use it in four ways:
+```mermaid
+flowchart LR
+    V["🎙️ Voice question"] -->|"Gemini audio understanding<br/>(WAV → transcript)"| Q["Question"]
+    T["⌨️ Typed question / card click"] --> Q
+    Q --> A["Stratus agent<br/>Gemini function calling"]
+    A -->|"read-only data tools<br/>metrics · traces · logs · costs · SLOs"| D[("Simulated<br/>multi-cloud estate")]
+    D --> A
+    A -->|"show_data / render_ui<br/>function calls"| UI["Generative UI<br/>charts · heatmaps · traces · funnels"]
+    A -->|"proposes fix"| P{"Gemini Decisions API<br/>policy check"}
+    P -->|"confirmed ≥ 50 %"| X["execute_action"]
+    P -->|"not confirmed"| H["ask the human<br/>Confirm / Cancel"]
+```
 
-| Capability | Where | What it does |
-|---|---|---|
-| **Function calling (agent loop)** | `lib/agent/gemini/` (Flutter), `backend/agent.py` | Gemini decides which tools to call (metrics, traces, logs, service graph, costs, …), reads the results, reasons about them over several turns and reaches a root cause. |
-| **Generative UI via function calls** | `lib/agent/gemini/prompt.dart` | Two UI tools, `show_data(data_id)` and `render_ui(component_json)`, let Gemini decide *which* visualization explains the problem best and compose its own components (briefs, stats, tables, action buttons, follow-up questions). The Flutter client renders them natively. |
-| **Audio understanding (voice input)** | `lib/voice/`, `lib/gemini/gemini_client.dart` | The browser records the question as 16 kHz WAV. Gemini transcribes it with a domain-aware prompt (it knows terms like *p95*, *payment-svc*, *error budget*). |
-| **Structured output** | `lib/agent/mock_router.dart` | When the offline playbook is active, Gemini classifies free-form questions into scenarios using a JSON response schema. |
+| # | Gemini capability | Model / endpoint | What Stratus does with it | Code |
+|---|---|---|---|---|
+| 1 | **Function calling: the agent loop** | `generateContent` · `gemini-flash-latest` (frontend), `gemini-3.7-flash` (backend) | Gemini plans the investigation, calls up to 14 tools (often in parallel) over up to 10 turns, keeps its thought signatures across turns and reasons its way to the root cause | [`lib/agent/gemini/gemini_agent.dart`](lib/agent/gemini/gemini_agent.dart), [`backend/agent.py`](backend/agent.py) |
+| 2 | **Generative UI through function calls** | same agent loop | Two UI tools let Gemini decide *how* to explain: `show_data(data_id)` picks the best visualization for the data it just retrieved, and `render_ui(component_json)` composes briefs, KPI tiles, tables, action buttons and follow-up questions | [`lib/agent/gemini/prompt.dart`](lib/agent/gemini/prompt.dart) |
+| 3 | **Gemini Decisions API** | `POST /v1beta/decisions` · `gemini-decision-1` | **Human-in-the-loop guard:** before any production change, a yes/no decision ("did the user explicitly confirm this action?") and a risk score (low / medium / high). Below 50 % confidence the action is blocked and Gemini has to ask for confirmation first. **Routing:** the offline playbook maps free-form questions to one of 16 scenarios as a `choice` decision | [`lib/gemini/decisions_client.dart`](lib/gemini/decisions_client.dart), [`lib/agent/gemini/policy.dart`](lib/agent/gemini/policy.dart), [`lib/agent/mock_router.dart`](lib/agent/mock_router.dart) |
+| 4 | **Audio understanding** | `generateContent` with `audio/wav` inline data | Voice input: the browser records 16 kHz WAV, and Gemini transcribes it with a domain-aware prompt (it knows *p95*, *payment-svc*, *error budget*, …) | [`lib/voice/`](lib/voice/), [`lib/gemini/gemini_client.dart`](lib/gemini/gemini_client.dart) |
+| 5 | **Structured output** | `generateContent` + `responseSchema` (enum) | Fallback router when the Decisions API is unavailable | [`lib/gemini/gemini_client.dart`](lib/gemini/gemini_client.dart) |
+| 6 | **Google GenAI SDK** | `google-genai` (Python) | The backend's SRE agent calls Gemini with function declarations for service graph, metrics, logs, traces and `propose_action` | [`backend/agent.py`](backend/agent.py) |
 
-Models are configurable: the frontend defaults to `gemini-flash-latest` (`--dart-define=GEMINI_MODEL=…`), and the
-backend uses `GEMINI_MODEL` in `backend/.env` (e.g. `gemini-3.7-flash`). The backend uses the official
-**Google GenAI SDK** (`google-genai`).
+### Why the Decisions API fits an agent
 
-**Built to survive a live demo:** retries with backoff on rate limits and overload, per-call and total timeouts,
-and an automatic fallback to a scripted playbook when Gemini is unreachable.
+Most agent steps are not writing tasks; they are **closed-set decisions**: which scenario, approved or not,
+how risky. Generating text for those is slow and has to be parsed. The Decisions API returns a typed answer
+with a calibrated probability, so Stratus can apply hard thresholds ("block below 50 %") and show the
+confidence to the user as a step: *Policy check · Gemini Decisions · confirmed 99 % · risk low*.
 
-Other Google technology in the stack:
-- **Flutter** (web) for the Stratus dashboard and chat UI.
-- **Google Cloud Run** as a one-command deploy target for the backend (see `backend/README.md`).
+```jsonc
+// POST https://generativelanguage.googleapis.com/v1beta/decisions
+{
+  "model": "gemini-decision-1",
+  "input": "Proposed production change: rollback_payment_svc\nLatest message from the user: \"User clicked the button \\\"Confirm\\\" (action id: confirm:rollback_payment_svc).\"",
+  "questions": {
+    "confirmed": { "type": "noul",  "instructions": "Did the user explicitly confirm that this exact production change should be executed now?" },
+    "risk":      { "type": "score", "instructions": "How risky is this production change for an online shop?",
+                   "criteria": ["low: reversible …", "medium: limited customer impact …", "high: likely downtime …"] }
+  }
+}
+```
 
-### codesphere
+### Generative UI: how Gemini "draws"
+
+Data tools return two things: a compact summary for Gemini to reason over, and ready-made visualizations
+addressed by a `data_id`. Gemini then decides which ones tell the story and in what order:
+
+```text
+→ get_latency_by_region()         ← { regions: [...], data_ids: { region_heatmap: "heatmap" } }
+→ get_slow_trace()                ← { per_call_ms: 274, data_ids: { slow_trace: "waterfall", ... } }
+→ render_ui({"type":"brief", "severity":"critical", "items":[{"label":"Cause", ...}]})
+→ show_data("region_heatmap")     → heatmap appears in the chat
+→ show_data("slow_trace")         → trace waterfall appears in the chat
+→ render_ui({"type":"actions", "actions":[{"id":"rollback", "label":"Roll back payment-svc"}]})
+```
+
+The Flutter client renders every component natively in its own design system. Gemini never sends HTML.
+
+### Built to survive a live demo
+
+Retries with backoff on `429`/`5xx` (respecting `retryDelay`), per-call and total timeouts, rollback of the
+conversation history when an answer fails midway, and an automatic fallback to a scripted playbook. The demo
+keeps working even if the Wi-Fi doesn't.
+
+Also from Google: **Flutter** (web) for the UI and **Cloud Run** as a one-command deploy target for the backend.
+
+---
+
+## How we use codesphere
 
 - **Part of the multi-cloud story.** In the simulated estate, codesphere hosts the storefront and runs the
   deploy pipeline next to AWS, Google Cloud and Azure. Stratus treats it as a first-class provider: its deploy
