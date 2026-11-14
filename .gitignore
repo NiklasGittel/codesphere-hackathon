@@ -5,3 +5,8 @@ build/
 .flutter-plugins-dependencies
 .idea/
 *.iml
+
+# backend
+.env
+.venv/
+__pycache__/

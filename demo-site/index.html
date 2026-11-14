@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<!--
+  shop/index.html - "Tech Europe Merch" demo shop (single file, no build step).
+
+  Purpose: the customer-facing part of the AI SRE demo. A visitor buys the
+  "Ship It" coder shirt. On a normal day checkout takes ~0.3s; during
+  "Black Friday" (incident started in the backend) checkout takes ~10s,
+  until the AI SRE agent fixes the infrastructure.
+
+  Backend: POST /api/checkout, POST /api/incident/start, POST /api/reset,
+  GET /api/infra/state (see backend/README.md).
+  API base: ?api=https://... in the URL, otherwise http://localhost:8080.
+  If the backend is unreachable, the shop falls back to a local mock so it
+  still works standalone (MOCK badge in the corner).
+
+  Demo controls: press "D" or click the small gear bottom-right.
+-->
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tech Europe Merch – Ship It Shirt</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12161b; --line:#232a33; --text:#e8edf2; --muted:#8a96a3;
+    --accent:#7cf29a; --accent2:#5ab8ff; --warn:#ffcc4d; --bad:#ff5d6c; --bf:#ff2e63;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Consolas, monospace;
+    --sans: Inter, "Segoe UI", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+       background-image:radial-gradient(circle at 80% -10%,rgba(124,242,154,.08),transparent 40%),
+       linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+       background-size:auto,32px 32px,32px 32px}
+  button{font:inherit;cursor:pointer}
+  .bf-banner{display:none;background:var(--bf);color:#fff;text-align:center;font-family:var(--mono);
+       font-weight:700;padding:10px;letter-spacing:.05em;animation:pulse 1.6s infinite}
+  body.bf .bf-banner{display:block}
+  @keyframes pulse{50%{filter:brightness(1.25)}}
+  header{display:flex;align-items:center;justify-content:space-between;padding:20px 40px;border-bottom:1px solid var(--line)}
+  .logo{font-family:var(--mono);font-size:20px;font-weight:700}
+  .logo .b{color:var(--accent)} .logo .k{color:var(--accent2)} .logo small{color:var(--muted);font-weight:400;margin-left:8px;font-size:13px}
+  nav{display:flex;gap:28px;color:var(--muted);font-size:14px}
+  .cart-btn{background:none;border:1px solid var(--line);color:var(--text);padding:8px 14px;border-radius:8px;font-family:var(--mono)}
+  .cart-btn b{color:var(--accent)}
+  main{max-width:1180px;margin:0 auto;padding:48px 40px;display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:start}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:36px;position:relative;overflow:hidden}
+  .stage .tag{position:absolute;top:18px;left:18px;font-family:var(--mono);font-size:12px;color:var(--accent);
+       border:1px solid rgba(124,242,154,.35);padding:4px 8px;border-radius:6px}
+  .stage svg{width:100%;height:auto;display:block;filter:drop-shadow(0 30px 40px rgba(0,0,0,.55))}
+  .term{margin-top:18px;font-family:var(--mono);font-size:13px;color:var(--muted);background:#090b0e;border:1px solid var(--line);
+       border-radius:10px;padding:14px 16px;line-height:1.7}
+  .term .p{color:var(--accent)} .term .c{color:var(--accent2)}
+  .crumbs{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:14px}
+  h1{font-size:42px;line-height:1.05;letter-spacing:-.02em}
+  h1 code{font-family:var(--mono);color:var(--accent)}
+  .sub{color:var(--muted);margin:14px 0 22px;line-height:1.6}
+  .price{display:flex;align-items:baseline;gap:12px;margin-bottom:26px;font-family:var(--mono)}
+  .price .now{font-size:30px;font-weight:700}
+  .price .old{color:var(--muted);text-decoration:line-through;display:none}
+  .price .off{display:none;background:var(--bf);color:#fff;font-size:12px;padding:3px 8px;border-radius:5px}
+  body.bf .price .old, body.bf .price .off{display:inline-block}
+  .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:var(--mono)}
+  .opts{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap}
+  .opt{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:9px;font-family:var(--mono);min-width:54px}
+  .opt.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px rgba(124,242,154,.12)}
+  .swatch{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);padding:0;min-width:0}
+  .swatch.on{border-color:var(--accent)}
+  .row{display:flex;gap:12px;align-items:center}
+  .qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .qty button{background:var(--panel);border:0;color:var(--text);width:40px;height:48px;font-size:18px}
+  .qty span{width:40px;text-align:center;font-family:var(--mono)}
+  .primary{flex:1;height:50px;border:0;border-radius:10px;background:var(--accent);color:#06210f;font-weight:700;font-size:15px;
+       transition:transform .1s}
+  .primary:active{transform:scale(.98)} .primary:disabled{opacity:.5;cursor:default}
+  .feats{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;color:var(--muted)}
+  .feats div{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:rgba(18,22,27,.6)}
+  .feats b{color:var(--text);display:block;margin-bottom:3px;font-family:var(--mono);font-size:13px}
+  /* drawer */
+  .shade{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:.2s;z-index:10}
+  .shade.on{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:400px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);
+       transform:translateX(100%);transition:.25s;z-index:11;display:flex;flex-direction:column}
+  .drawer.on{transform:none}
+  .drawer h3{padding:22px 24px;border-bottom:1px solid var(--line);font-family:var(--mono);display:flex;justify-content:space-between}
+  .drawer h3 button{background:none;border:0;color:var(--muted);font-size:20px}
+  .items{flex:1;overflow:auto;padding:12px 24px}
+  .item{display:flex;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+  .item .thumb{width:56px;height:56px;border-radius:10px;background:#090b0e;display:grid;place-items:center;font-family:var(--mono);color:var(--accent);font-size:11px}
+  .item .meta{flex:1;font-size:14px} .item .meta small{color:var(--muted);display:block;font-family:var(--mono);font-size:12px;margin-top:3px}
+  .item .rm{background:none;border:0;color:var(--muted)}
+  .empty{color:var(--muted);text-align:center;padding:40px 0;font-family:var(--mono);font-size:13px}
+  .foot{padding:20px 24px;border-top:1px solid var(--line)}
+  .total{display:flex;justify-content:space-between;font-family:var(--mono);margin-bottom:14px}
+  .primary.full{width:100%}
+  /* checkout modal */
+  .modal{position:fixed;inset:0;display:none;place-items:center;z-index:20;background:rgba(0,0,0,.7)}
+  .modal.on{display:grid}
+  .box{width:440px;max-width:92vw;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;text-align:center}
+  .spinner{width:56px;height:56px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--accent);margin:0 auto 20px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .timer{font-family:var(--mono);font-size:34px;font-weight:700;margin:6px 0}
+  .timer.slow{color:var(--warn)} .timer.bad{color:var(--bad)}
+  .hint{color:var(--muted);font-size:14px;min-height:20px;font-family:var(--mono)}
+  .hint.warn{color:var(--warn)}
+  .ok{font-size:46px} .order{font-family:var(--mono);color:var(--accent);margin:8px 0 18px}
+  .ghost{background:none;border:1px solid var(--line);color:var(--text);padding:10px 18px;border-radius:9px;margin-top:16px}
+  canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:30}
+  /* demo controls */
+  .demo-toggle{position:fixed;right:16px;bottom:16px;width:38px;height:38px;border-radius:50%;background:var(--panel);
+       border:1px solid var(--line);color:var(--muted);z-index:15}
+  .demo{position:fixed;right:16px;bottom:64px;width:270px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+       padding:14px;z-index:15;display:none;font-family:var(--mono);font-size:12px}
+  .demo.on{display:block}
+  .demo .t{color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between}
+  .demo button{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1px solid var(--line);background:#090b0e;color:var(--text);font-family:var(--mono);font-size:12px}
+  .demo .bfb{border-color:var(--bf);color:var(--bf)}
+  .demo .api{color:var(--muted);margin-top:10px;word-break:break-all}
+  .mode{padding:2px 6px;border-radius:4px;font-size:10px}
+  .mode.live{background:rgba(124,242,154,.15);color:var(--accent)} .mode.mock{background:rgba(255,204,77,.15);color:var(--warn)}
+  @media(max-width:900px){main{grid-template-columns:1fr;padding:24px} nav{display:none} header{padding:16px 20px}}
+</style>
+</head>
+<body>
+<div class="bf-banner">⚡ BLACK FRIDAY — 50% OFF EVERYTHING — git checkout -b deals ⚡</div>
+
+<header>
+  <div class="logo"><span class="k">{</span>Tech<span class="b">:</span>Europe<span class="k">}</span><small>merch</small></div>
+  <nav><span>Shirts</span><span>Hoodies</span><span>Stickers</span><span>About</span></nav>
+  <button class="cart-btn" id="cartBtn">cart[<b id="cartCount">0</b>]</button>
+</header>
+
+<main>
+  <section>
+    <div class="stage">
+      <span class="tag">// new drop</span>
+      <svg id="shirt" viewBox="0 0 400 420" aria-label="Ship It Shirt">
+        <path id="shirtBody" d="M120 30 L160 18 Q200 48 240 18 L280 30 L370 80 L340 150 L300 132 L300 400 Q200 412 100 400 L100 132 L60 150 L30 80 Z"
+              fill="#15181c" stroke="#2b333c" stroke-width="2"/>
+        <path d="M160 18 Q200 60 240 18" fill="none" stroke="#2b333c" stroke-width="3"/>
+        <g id="print" font-family="ui-monospace, Consolas, monospace" text-anchor="middle">
+          <text x="200" y="150" font-size="13" fill="#5ab8ff">$ git commit -m "europe"</text>
+          <text x="200" y="215" font-size="58" font-weight="800" fill="#7cf29a">SHIP</text>
+          <text x="200" y="272" font-size="58" font-weight="800" fill="#7cf29a">IT_</text>
+          <text x="200" y="310" font-size="12" fill="#8a96a3">// works on more than my machine</text>
+        </g>
+      </svg>
+      <div class="term">
+        <div><span class="p">~/merch $</span> cat shirt.yaml</div>
+        <div><span class="c">material:</span> 100% organic cotton</div>
+        <div><span class="c">fit:</span> unisex, made for long hack nights</div>
+        <div><span class="c">bugs:</span> 0 <span style="opacity:.6"># allegedly</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="crumbs">shop / shirts / ship-it</div>
+    <h1>The <code>Ship&nbsp;It</code><br>Coder Shirt</h1>
+    <p class="sub">For everyone who pushes to prod on a Friday and still sleeps well. Heavyweight organic cotton, terminal-green print, zero merge conflicts.</p>
+    <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span><span class="off">-50%</span></div>
+
+    <div class="label">color</div>
+    <div class="opts" id="colors">
+      <button class="opt swatch on" data-c="#15181c" data-n="Midnight" style="background:#15181c" title="Midnight"></button>
+      <button class="opt swatch" data-c="#e9ecef" data-n="Paper" style="background:#e9ecef" title="Paper"></button>
+      <button class="opt swatch" data-c="#1d3b2a" data-n="Terminal" style="background:#1d3b2a" title="Terminal"></button>
+    </div>
+
+    <div class="label">size</div>
+    <div class="opts" id="sizes">
+      <button class="opt">S</button><button class="opt on">M</button><button class="opt">L</button><button class="opt">XL</button><button class="opt">XXL</button>
+    </div>
+
+    <div class="row">
+      <div class="qty"><button id="minus">−</button><span id="qty">1</span><button id="plus">+</button></div>
+      <button class="primary" id="addBtn">Add to cart</button>
+    </div>
+
+    <div class="feats">
+      <div><b>⚡ fast shipping</b>2–3 days across Europe</div>
+      <div><b>↺ 30-day returns</b>no questions, no stack traces</div>
+      <div><b>🌱 organic</b>GOTS certified cotton</div>
+      <div><b>🔒 secure checkout</b>99.99% uptime*</div>
+    </div>
+  </section>
+</main>
+
+<div class="shade" id="shade"></div>
+<aside class="drawer" id="drawer">
+  <h3>cart.json <button id="closeCart">×</button></h3>
+  <div class="items" id="items"></div>
+  <div class="foot">
+    <div class="total"><span>total</span><span id="total">0,00 €</span></div>
+    <button class="primary full" id="checkoutBtn">Checkout →</button>
+  </div>
+</aside>
+
+<div class="modal" id="modal"><div class="box" id="box"></div></div>
+<canvas id="confetti"></canvas>
+
+<button class="demo-toggle" id="demoToggle" title="Demo controls (D)">⚙</button>
+<div class="demo" id="demo">
+  <div class="t"><span>demo controls</span><span class="mode" id="mode">…</span></div>
+  <button class="bfb" id="bfBtn">▶ Start Black Friday</button>
+  <button id="resetBtn">↺ Reset</button>
+  <div class="api" id="apiInfo"></div>
+</div>
+
+<script>
+/* ---------- config ---------- */
+const API = new URLSearchParams(location.search).get("api")
+  || (location.protocol.startsWith("http") && location.port === "8080" ? location.origin : "http://localhost:8080");
+const BASE_PRICE = 29.0;
+const SLOW_HINT_MS = 3000;
+
+/* ---------- state ---------- */
+const state = { cart: [], color: {c:"#15181c", n:"Midnight"}, size: "M", qty: 1, blackFriday: false, live: false, mockIncident: false };
+const $ = (id) => document.getElementById(id);
+const eur = (v) => v.toFixed(2).replace(".", ",") + " €";
+const unitPrice = () => state.blackFriday ? BASE_PRICE / 2 : BASE_PRICE;
+
+/** Log helper - all calls visible in the console for debugging. */
+function logInfo(msg, data) { console.info("[shop]", msg, data ?? ""); }
+
+/* ---------- product options ---------- */
+$("colors").addEventListener("click", (e) => {
+  const b = e.target.closest(".swatch"); if (!b) return;
+  document.querySelectorAll("#colors .swatch").forEach(x => x.classList.remove("on")); b.classList.add("on");
+  state.color = { c: b.dataset.c, n: b.dataset.n };
+  $("shirtBody").setAttribute("fill", b.dataset.c);
+  const light = b.dataset.n === "Paper";
+  $("print").querySelectorAll("text").forEach((t, i) => t.setAttribute("fill", light ? ["#1d6fb8","#0d8a3a","#0d8a3a","#555"][i] : ["#5ab8ff","#7cf29a","#7cf29a","#8a96a3"][i]));
+});
+$("sizes").addEventListener("click", (e) => {
+  const b = e.target.closest(".opt"); if (!b) return;
+  document.querySelectorAll("#sizes .opt").forEach(x => x.classList.remove("on")); b.classList.add("on");
+  state.size = b.textContent;
+});
+$("minus").onclick = () => { state.qty = Math.max(1, state.qty - 1); $("qty").textContent = state.qty; };
+$("plus").onclick = () => { state.qty = Math.min(9, state.qty + 1); $("qty").textContent = state.qty; };
+
+/* ---------- cart ---------- */
+$("addBtn").onclick = () => {
+  state.cart.push({ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty });
+  logInfo("add to cart", state.cart.at(-1));
+  renderCart(); openCart(true);
+};
+function renderCart() {
+  const n = state.cart.reduce((a, i) => a + i.qty, 0);
+  $("cartCount").textContent = n;
+  $("items").innerHTML = state.cart.length ? state.cart.map((i, k) => `
+    <div class="item"><div class="thumb">SHIP<br>IT_</div>
+      <div class="meta">${i.name}<small>${i.color} · ${i.size} · x${i.qty}</small></div>
+      <div style="font-family:var(--mono)">${eur(unitPrice() * i.qty)}</div>
+      <button class="rm" data-k="${k}">✕</button></div>`).join("")
+    : `<div class="empty">// cart is empty<br>git add shirt</div>`;
+  $("total").textContent = eur(unitPrice() * n);
+  $("checkoutBtn").disabled = !n;
+}
+$("items").addEventListener("click", (e) => { const b = e.target.closest(".rm"); if (b) { state.cart.splice(+b.dataset.k, 1); renderCart(); } });
+function openCart(on) { $("drawer").classList.toggle("on", on); $("shade").classList.toggle("on", on); }
+$("cartBtn").onclick = () => openCart(true);
+$("closeCart").onclick = $("shade").onclick = () => openCart(false);
+
+/* ---------- checkout ---------- */
+$("checkoutBtn").onclick = async () => {
+  openCart(false);
+  const t0 = performance.now();
+  $("box").innerHTML = `<div class="spinner"></div><div class="hint">processing payment…</div>
+    <div class="timer" id="timer">0.0s</div><div class="hint" id="slowHint"></div>`;
+  $("modal").classList.add("on");
+  const tick = setInterval(() => {
+    const ms = performance.now() - t0, el = $("timer"); if (!el) return;
+    el.textContent = (ms / 1000).toFixed(1) + "s";
+    el.className = "timer" + (ms > 6000 ? " bad" : ms > SLOW_HINT_MS ? " slow" : "");
+    if (ms > SLOW_HINT_MS) { $("slowHint").textContent = "this is taking longer than usual…"; $("slowHint").className = "hint warn"; }
+  }, 100);
+  let res;
+  try { res = await apiCheckout(); }
+  catch (err) { res = { error: String(err) }; }
+  clearInterval(tick);
+  const secs = ((performance.now() - t0) / 1000).toFixed(2);
+  logInfo("checkout done", { secs, res });
+  if (res.error) {
+    $("box").innerHTML = `<div class="ok">💥</div><h2>Checkout failed</h2><div class="hint">${res.error}</div><button class="ghost" onclick="closeModal()">close</button>`;
+    return;
+  }
+  $("box").innerHTML = `<div class="ok">✓</div><h2>Order confirmed</h2>
+    <div class="order">${res.order_id} · ${secs}s</div>
+    <div class="hint">your shirt is on its way 🚀</div><button class="ghost" onclick="closeModal()">keep shopping</button>`;
+  state.cart = []; renderCart(); confetti();
+};
+function closeModal() { $("modal").classList.remove("on"); }
+
+/** POST /api/checkout - falls back to a local mock if the backend is unreachable. */
+async function apiCheckout() {
+  if (state.live) {
+    try {
+      const r = await fetch(API + "/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: state.cart }) });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } catch (e) { logInfo("backend unreachable, using mock", e); setLive(false); }
+  }
+  await new Promise(ok => setTimeout(ok, state.mockIncident ? 9500 + Math.random() * 600 : 280 + Math.random() * 60));
+  return { order_id: "TE-" + Math.random().toString(16).slice(2, 8).toUpperCase(), status: "confirmed" };
+}
+
+/* ---------- backend link + black friday ---------- */
+function setLive(on) {
+  state.live = on;
+  $("mode").textContent = on ? "LIVE" : "MOCK";
+  $("mode").className = "mode " + (on ? "live" : "mock");
+}
+function setBlackFriday(on) {
+  if (state.blackFriday === on) return;
+  state.blackFriday = on;
+  document.body.classList.toggle("bf", on);
+  $("priceNow").textContent = eur(unitPrice());
+  renderCart();
+}
+/** Poll backend state: detects LIVE/MOCK and whether Black Friday is running. */
+async function poll() {
+  try {
+    const r = await fetch(API + "/api/infra/state", { cache: "no-store" });
+    const d = await r.json();
+    setLive(true);
+    setBlackFriday(!!d.incident_active);
+  } catch { setLive(false); setBlackFriday(state.mockIncident); }
+}
+async function post(path) {
+  if (!state.live) return;
+  try { await fetch(API + path, { method: "POST" }); } catch (e) { logInfo("post failed " + path, e); }
+}
+$("bfBtn").onclick = async () => { state.mockIncident = true; await post("/api/incident/start"); setBlackFriday(true); };
+$("resetBtn").onclick = async () => { state.mockIncident = false; await post("/api/reset"); setBlackFriday(false); };
+$("demoToggle").onclick = () => $("demo").classList.toggle("on");
+document.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "d" && !e.target.closest("input")) $("demo").classList.toggle("on"); });
+$("apiInfo").textContent = "api: " + API;
+
+/* ---------- confetti ---------- */
+function confetti() {
+  const c = $("confetti"), x = c.getContext("2d");
+  c.width = innerWidth; c.height = innerHeight;
+  const cols = ["#7cf29a", "#5ab8ff", "#ffcc4d", "#ff5d6c", "#ffffff"];
+  const ps = Array.from({ length: 160 }, () => ({ x: innerWidth / 2, y: innerHeight / 2, vx: (Math.random() - .5) * 16,
+    vy: Math.random() * -14 - 4, s: 4 + Math.random() * 5, c: cols[Math.random() * cols.length | 0], r: Math.random() * 6 }));
+  let f = 0;
+  (function frame() {
+    x.clearRect(0, 0, c.width, c.height);
+    ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .35; p.r += .1;
+      x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * .6); x.restore(); });
+    if (f++ < 150) requestAnimationFrame(frame); else x.clearRect(0, 0, c.width, c.height);
+  })();
+}
+
+/* ---------- init ---------- */
+renderCart(); poll(); setInterval(poll, 3000);
+</script>
+</body>
+</html>
