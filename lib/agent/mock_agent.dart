@@ -20,6 +20,9 @@ class MockAgent implements AgentService {
   void reset() {}
 
   @override
+  void useSession(String id) {}
+
+  @override
   Stream<AgentEvent> send(String message, {String? actionId}) async* {
     if (actionId != null) {
       yield* _action(actionId);

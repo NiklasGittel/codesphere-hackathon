@@ -55,9 +55,11 @@ class _HomeScreenState extends State<HomeScreen> {
     c.send(text);
   }
 
+  /// Opens (or re-opens) the conversation for a topic. The action id doubles
+  /// as conversation id, so each card / nav entry has exactly one chat.
   void _open(String title, String actionId) {
     _forceScroll = true;
-    c.send(title, actionId: actionId);
+    c.open(actionId, title, actionId: actionId);
   }
 
   /// Card clicked on the start page.
@@ -67,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _newChat() {
-    c.reset();
+    c.showOverview();
     setState(() => _nav = NavIds.overview);
   }
 
@@ -85,25 +87,24 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _nav = id);
       return;
     }
+    if (id.startsWith('chat:')) {
+      _forceScroll = true;
+      c.open(id.substring(5), '');
+      setState(() => _nav = null);
+      return;
+    }
     final topic = topics[id];
     if (topic == null) {
       // overview / incidents / savings live on the start page.
-      if (!c.busy) c.reset();
+      c.showOverview();
       setState(() => _nav = id);
       return;
     }
-    if (c.busy) return;
-    c.reset();
     setState(() => _nav = id);
     _open(topic.$1, topic.$2);
   }
 
-  String? get _topic {
-    if (c.messages.isEmpty) return null;
-    final parts = c.messages.first.parts;
-    final first = parts.isEmpty ? null : parts.first;
-    return first is TextPart ? first.text : null;
-  }
+  String? get _topic => c.current?.title;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
@@ -114,7 +115,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ListenableBuilder(
                 listenable: c,
                 builder: (context, _) =>
-                    Sidebar(selected: _nav, onNavigate: _navigate, onNewChat: _newChat),
+                    Sidebar(
+                  selected: _nav,
+                  onNavigate: _navigate,
+                  onNewChat: _newChat,
+                  conversations: [
+                    for (final conv in c.conversations)
+                      RecentChat(
+                        id: conv.id,
+                        title: conv.title,
+                        updatedAt: conv.updatedAt,
+                        running: c.runningId == conv.id,
+                        open: c.current?.id == conv.id,
+                      ),
+                  ],
+                ),
               ),
             if (wide) const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
             Expanded(
@@ -123,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, _) => Column(children: [
                   _TopBar(topic: _topic, onBack: _newChat),
                   Expanded(
-                    child: c.messages.isEmpty ? StartPage(onOpen: _openFromStart) : _messages(),
+                    child: c.current == null ? StartPage(onOpen: _openFromStart) : _messages(),
                   ),
                   Composer(busy: c.busy, onSend: _send, onStop: c.stop),
                 ]),

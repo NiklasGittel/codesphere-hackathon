@@ -29,17 +29,43 @@ class NavIds {
   static const settings = 'settings';
 }
 
+/// A conversation kept in memory, shown under "Recent investigations".
+class RecentChat {
+  const RecentChat({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+    this.running = false,
+    this.open = false,
+  });
+  final String id;
+  final String title;
+  final DateTime updatedAt;
+  final bool running;
+  final bool open;
+}
+
+String _ago(DateTime t) {
+  final d = DateTime.now().difference(t);
+  if (d.inMinutes < 1) return 'now';
+  if (d.inHours < 1) return '${d.inMinutes} min';
+  if (d.inDays < 1) return '${d.inHours} h';
+  return '${d.inDays} d';
+}
+
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
     required this.selected,
     required this.onNavigate,
     required this.onNewChat,
+    this.conversations = const [],
   });
 
   final String? selected;
   final ValueChanged<String> onNavigate;
   final VoidCallback onNewChat;
+  final List<RecentChat> conversations;
 
   static const recent = [
     ('recent_checkout', 'Checkout latency spike', 'Ongoing'),
@@ -107,6 +133,19 @@ class Sidebar extends StatelessWidget {
                 _item(NavIds.costs, Icons.bar_chart_rounded, 'Cost explorer'),
                 const SizedBox(height: 16),
                 const _SectionLabel('Recent investigations'),
+                for (final conv in conversations.take(8))
+                  _NavItem(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: conv.title,
+                    dense: true,
+                    active: conv.open,
+                    trailing: conv.running
+                        ? const Spinner(size: 11, color: AppColors.mutedForeground)
+                        : Text(_ago(conv.updatedAt), style: AppText.small.copyWith(fontSize: 11)),
+                    onTap: () => onNavigate('chat:${conv.id}'),
+                  ),
+                // Demo entries until real investigations exist.
+                if (conversations.isEmpty)
                 for (final r in recent)
                   _NavItem(
                     icon: Icons.chat_bubble_outline_rounded,

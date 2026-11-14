@@ -21,7 +21,10 @@ class GeminiAgent implements AgentService {
   final AgentService? fallback;
 
   final InfraWorld world = InfraWorld();
-  final List<Map<String, dynamic>> _history = [];
+  /// One Gemini history per conversation.
+  final Map<String, List<Map<String, dynamic>>> _sessions = {};
+  String _session = 'default';
+  List<Map<String, dynamic>> get _history => _sessions.putIfAbsent(_session, () => []);
   final Map<String, Map<String, dynamic>> _data = {};
   int _stepSeq = 0;
 
@@ -32,8 +35,14 @@ class GeminiAgent implements AgentService {
   };
 
   @override
+  void useSession(String id) {
+    _session = id;
+    fallback?.useSession(id);
+  }
+
+  @override
   void reset() {
-    _history.clear();
+    _sessions.clear();
     _data.clear();
     fallback?.reset();
   }
@@ -52,9 +61,10 @@ class GeminiAgent implements AgentService {
     // Everything this message adds to the history is rolled back unless the
     // turn finishes cleanly. Otherwise a failed or stopped answer would leave
     // a function call without a response and break every later request.
-    final snapshot = _history.length;
+    final history = _history;
+    final snapshot = history.length;
     var clean = false;
-    _history.add({
+    history.add({
       'role': 'user',
       'parts': [
         {'text': _userText(message, actionId)}
@@ -71,7 +81,7 @@ class GeminiAgent implements AgentService {
         try {
           content = await _client
               .generate(
-                contents: _history,
+                contents: history,
                 system: systemPrompt(DateTime.now()),
                 functions: functionDeclarations,
               )
@@ -80,7 +90,7 @@ class GeminiAgent implements AgentService {
           yield StepCompleted(thinkId, detail: 'failed');
           final reason = e is GeminiException ? e.message : '$e';
           debugPrint('[gemini-agent] $reason');
-          _history.length = snapshot;
+          history.length = snapshot;
           clean = true;
           if (turn == 0 && fallback != null) {
             yield TextChunk('Gemini is unavailable (**$reason**). Using the offline playbook instead.',
@@ -92,7 +102,7 @@ class GeminiAgent implements AgentService {
           }
           return;
         }
-        _history.add(content);
+        history.add(content);
 
         final parts = (content['parts'] as List).whereType<Map>().toList();
         final calls = parts.where((p) => p['functionCall'] is Map).toList();
@@ -133,14 +143,14 @@ class GeminiAgent implements AgentService {
             },
           });
         }
-        _history.add({'role': 'user', 'parts': responses});
+        history.add({'role': 'user', 'parts': responses});
       }
       // Too many turns: drop this exchange so the history stays valid.
-      _history.length = snapshot;
+      history.length = snapshot;
       clean = true;
       yield const TextChunk('I stopped here to keep the answer short. Ask me to continue.', startsNew: true);
     } finally {
-      if (!clean && _history.length > snapshot) _history.length = snapshot;
+      if (!clean && history.length > snapshot) history.length = snapshot;
     }
   }
 

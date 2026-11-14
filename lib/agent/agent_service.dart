@@ -40,6 +40,10 @@ class BlockEmitted extends AgentEvent {
 abstract class AgentService {
   Stream<AgentEvent> send(String message, {String? actionId});
 
-  /// Forget the conversation (new investigation).
+  /// Switch to the conversation [id]; agents with memory keep one history
+  /// per conversation.
+  void useSession(String id);
+
+  /// Forget all conversations.
   void reset();
 }
