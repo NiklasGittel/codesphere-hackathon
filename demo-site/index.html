@@ -33,8 +33,8 @@
        linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
        background-size:auto,32px 32px,32px 32px}
   button{font:inherit;cursor:pointer}
-  .bf-banner{display:none;background:var(--bf);color:#fff;text-align:center;font-family:var(--mono);
-       font-weight:700;padding:10px;letter-spacing:.05em;animation:pulse 1.6s infinite}
+  .bf-banner{display:none;background:#0f1a14;color:var(--accent);text-align:center;font-family:var(--mono);
+       font-size:12px;padding:8px;letter-spacing:.08em;border-bottom:1px solid rgba(124,242,154,.2)}
   body.bf .bf-banner{display:block}
   @keyframes pulse{50%{filter:brightness(1.25)}}
   header{display:flex;align-items:center;justify-content:space-between;padding:20px 40px;border-bottom:1px solid var(--line)}
@@ -58,7 +58,7 @@
   .price{display:flex;align-items:baseline;gap:12px;margin-bottom:26px;font-family:var(--mono)}
   .price .now{font-size:30px;font-weight:700}
   .price .old{color:var(--muted);text-decoration:line-through;display:none}
-  .price .off{display:none;background:var(--bf);color:#fff;font-size:12px;padding:3px 8px;border-radius:5px}
+  .price .off{display:none;border:1px solid rgba(124,242,154,.4);color:var(--accent);font-size:12px;padding:3px 8px;border-radius:5px}
   body.bf .price .old, body.bf .price .off{display:inline-block}
   .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:var(--mono)}
   .opts{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap}
@@ -105,6 +105,31 @@
   .hint.warn{color:var(--warn)}
   .ok{font-size:46px} .order{font-family:var(--mono);color:var(--accent);margin:8px 0 18px}
   .ghost{background:none;border:1px solid var(--line);color:var(--text);padding:10px 18px;border-radius:9px;margin-top:16px}
+  .err-icon{width:64px;height:64px;border-radius:50%;margin:0 auto 16px;display:grid;place-items:center;font-size:34px;font-weight:800;
+       color:var(--bad);border:3px solid var(--bad);background:rgba(255,93,108,.08)}
+  .err-code{font-family:var(--mono);color:var(--bad);margin:8px 0 14px;font-size:14px}
+  .req{font-family:var(--mono);color:var(--muted);font-size:11px;margin-top:12px;opacity:.7}
+  .err-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
+  .err-actions .primary{flex:0 0 auto;padding:0 22px;height:42px}
+  .err-actions .ghost{margin-top:0}
+  .shake{animation:shake .45s}
+  @keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+  .spinner{width:72px;height:72px;border-width:5px}
+  /* ---- Black Friday look (subtle) ---- */
+  .bf-kicker{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.12em;margin-bottom:14px;display:inline-flex!important;
+       align-items:center;gap:8px}
+  .bf-kicker::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  body:not(.bf) .bf-kicker{display:none!important}
+  .bf-sticker{display:none!important}
+  .bf-info{display:none;gap:18px;margin:-10px 0 26px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  body.bf .bf-info{display:flex}
+  .bf-info b{color:var(--text);font-weight:600}
+  #shirt3d{position:relative;width:100%;cursor:grab}
+  #shirt3d:active{cursor:grabbing}
+  #shirt3d canvas{display:block}
+  #shirt3d .drag-hint{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:11px;
+       color:var(--muted);opacity:0;transition:opacity .4s;pointer-events:none}
+  #shirt3d.ready .drag-hint{opacity:.7}
   canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:30}
   /* demo controls */
   .demo-toggle{position:fixed;right:16px;bottom:16px;width:38px;height:38px;border-radius:50%;background:var(--panel);
@@ -121,19 +146,21 @@
   @media(max-width:900px){main{grid-template-columns:1fr;padding:24px} nav{display:none} header{padding:16px 20px}}
 </style>
 </head>
-<body>
-<div class="bf-banner">⚡ BLACK FRIDAY — 50% OFF EVERYTHING — git checkout -b deals ⚡</div>
+<body class="bf">
+<div class="bf-banner">black friday — 50% off all merch — ends tonight</div>
 
 <header>
-  <div class="logo"><span class="k">{</span>Tech<span class="b">:</span>Europe<span class="k">}</span><small>merch</small></div>
+  <div class="logo"><span class="b">&gt;</span> tech_europe<span class="k">/</span>merch<span class="b">_</span></div>
   <nav><span>Shirts</span><span>Hoodies</span><span>Stickers</span><span>About</span></nav>
-  <button class="cart-btn" id="cartBtn">cart[<b id="cartCount">0</b>]</button>
+  <button class="cart-btn" id="cartBtn" style="display:none">cart[<b id="cartCount">0</b>]</button>
 </header>
 
 <main>
   <section>
     <div class="stage">
       <span class="tag">// new drop</span>
+      <div class="bf-sticker">-50%<small>BLACK FRIDAY</small></div>
+      <div id="shirt3d"><span class="drag-hint">drag to rotate ↻</span></div>
       <svg id="shirt" viewBox="0 0 400 420" aria-label="Ship It Shirt">
         <path id="shirtBody" d="M120 30 L160 18 Q200 48 240 18 L280 30 L370 80 L340 150 L300 132 L300 400 Q200 412 100 400 L100 132 L60 150 L30 80 Z"
               fill="#15181c" stroke="#2b333c" stroke-width="2"/>
@@ -155,10 +182,12 @@
   </section>
 
   <section>
+    <div class="bf-kicker">BLACK FRIDAY · −50%</div>
     <div class="crumbs">shop / shirts / ship-it</div>
     <h1>The <code>Ship&nbsp;It</code><br>Coder Shirt</h1>
     <p class="sub">For everyone who pushes to prod on a Friday and still sleeps well. Heavyweight organic cotton, terminal-green print, zero merge conflicts.</p>
     <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span><span class="off">-50%</span></div>
+    <div class="bf-info"><span>ends in <b id="cd">05:59:59</b></span><span><b id="viewers">214</b> viewing now</span></div>
 
     <div class="label">color</div>
     <div class="opts" id="colors">
@@ -174,7 +203,7 @@
 
     <div class="row">
       <div class="qty"><button id="minus">−</button><span id="qty">1</span><button id="plus">+</button></div>
-      <button class="primary" id="addBtn">Add to cart</button>
+      <button class="primary" id="addBtn">Buy now →</button>
     </div>
 
     <div class="feats">
@@ -215,7 +244,7 @@ const BASE_PRICE = 29.0;
 const SLOW_HINT_MS = 3000;
 
 /* ---------- state ---------- */
-const state = { cart: [], color: {c:"#15181c", n:"Midnight"}, size: "M", qty: 1, blackFriday: false, live: false, mockIncident: false };
+const state = { cart: [], color: {c:"#15181c", n:"Midnight"}, size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
 const $ = (id) => document.getElementById(id);
 const eur = (v) => v.toFixed(2).replace(".", ",") + " €";
 const unitPrice = () => state.blackFriday ? BASE_PRICE / 2 : BASE_PRICE;
@@ -229,6 +258,7 @@ $("colors").addEventListener("click", (e) => {
   document.querySelectorAll("#colors .swatch").forEach(x => x.classList.remove("on")); b.classList.add("on");
   state.color = { c: b.dataset.c, n: b.dataset.n };
   $("shirtBody").setAttribute("fill", b.dataset.c);
+  window.setShirtColor?.(b.dataset.c, b.dataset.n === "Paper");
   const light = b.dataset.n === "Paper";
   $("print").querySelectorAll("text").forEach((t, i) => t.setAttribute("fill", light ? ["#1d6fb8","#0d8a3a","#0d8a3a","#555"][i] : ["#5ab8ff","#7cf29a","#7cf29a","#8a96a3"][i]));
 });
@@ -242,9 +272,9 @@ $("plus").onclick = () => { state.qty = Math.min(9, state.qty + 1); $("qty").tex
 
 /* ---------- cart ---------- */
 $("addBtn").onclick = () => {
-  state.cart.push({ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty });
-  logInfo("add to cart", state.cart.at(-1));
-  renderCart(); openCart(true);
+  state.cart = [{ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty }];
+  logInfo("buy now", state.cart[0]);
+  runCheckout();
 };
 function renderCart() {
   const n = state.cart.reduce((a, i) => a + i.qty, 0);
@@ -264,47 +294,70 @@ $("cartBtn").onclick = () => openCart(true);
 $("closeCart").onclick = $("shade").onclick = () => openCart(false);
 
 /* ---------- checkout ---------- */
-$("checkoutBtn").onclick = async () => {
+const CHECKOUT_TIMEOUT_MS = 3000;
+const sleep = (ms) => new Promise(ok => setTimeout(ok, ms));
+$("checkoutBtn").onclick = () => runCheckout();
+
+/** Run the checkout: long spinner, then success or a checkout error (e.g. 504 timeout). */
+async function runCheckout() {
   openCart(false);
-  const t0 = performance.now();
-  $("box").innerHTML = `<div class="spinner"></div><div class="hint">processing payment…</div>
-    <div class="timer" id="timer">0.0s</div><div class="hint" id="slowHint"></div>`;
+  $("box").classList.remove("shake");
+  $("box").innerHTML = `<div class="spinner"></div><h2 style="margin-bottom:8px">Processing your order</h2>
+    <div class="hint" id="stepHint">contacting payment provider…</div>`;
   $("modal").classList.add("on");
-  const tick = setInterval(() => {
-    const ms = performance.now() - t0, el = $("timer"); if (!el) return;
-    el.textContent = (ms / 1000).toFixed(1) + "s";
-    el.className = "timer" + (ms > 6000 ? " bad" : ms > SLOW_HINT_MS ? " slow" : "");
-    if (ms > SLOW_HINT_MS) { $("slowHint").textContent = "this is taking longer than usual…"; $("slowHint").className = "hint warn"; }
-  }, 100);
+  const steps = ["contacting payment provider…", "reserving your size…", "confirming order…"];
+  let i = 0;
+  const st = setInterval(() => { const h = $("stepHint"); if (h) h.textContent = steps[++i % steps.length]; }, 1100);
+  const t0 = performance.now();
   let res;
   try { res = await apiCheckout(); }
-  catch (err) { res = { error: String(err) }; }
-  clearInterval(tick);
+  catch (e) { res = { ok: false, code: "NET", title: "Network Error", request_id: "-" }; }
+  clearInterval(st);
   const secs = ((performance.now() - t0) / 1000).toFixed(2);
-  logInfo("checkout done", { secs, res });
-  if (res.error) {
-    $("box").innerHTML = `<div class="ok">💥</div><h2>Checkout failed</h2><div class="hint">${res.error}</div><button class="ghost" onclick="closeModal()">close</button>`;
-    return;
-  }
+  logInfo("checkout result", { secs, res });
+  if (!res.ok) { showCheckoutError(res); return; }
   $("box").innerHTML = `<div class="ok">✓</div><h2>Order confirmed</h2>
     <div class="order">${res.order_id} · ${secs}s</div>
     <div class="hint">your shirt is on its way 🚀</div><button class="ghost" onclick="closeModal()">keep shopping</button>`;
   state.cart = []; renderCart(); confetti();
-};
+}
+
+/** Show the checkout error dialog (cart is kept so the user can retry). */
+function showCheckoutError(res) {
+  $("box").innerHTML = `<div class="err-icon">!</div><h2>Checkout failed</h2>
+    <div class="err-code">Error ${res.code} · ${res.title}</div>
+    <div class="hint">We couldn't complete your order. Your card was not charged.<br>Please try again in a moment.</div>
+    <div class="req">request_id: ${res.request_id}</div>
+    <div class="err-actions"><button class="primary" onclick="runCheckout()">Try again</button>
+    <button class="ghost" onclick="closeModal()">Back to shop</button></div>`;
+  void $("box").offsetWidth; $("box").classList.add("shake");
+}
 function closeModal() { $("modal").classList.remove("on"); }
 
-/** POST /api/checkout - falls back to a local mock if the backend is unreachable. */
+/** POST /api/checkout. Returns {ok:true, order_id} or {ok:false, code, title, request_id}.
+ *  Falls back to a local mock if the backend is unreachable. */
 async function apiCheckout() {
+  const rid = "req_" + Math.random().toString(16).slice(2, 10);
   if (state.live) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS + 2000);
     try {
       const r = await fetch(API + "/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: state.cart }) });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return await r.json();
-    } catch (e) { logInfo("backend unreachable, using mock", e); setLive(false); }
+        body: JSON.stringify({ items: state.cart }), signal: ctrl.signal });
+      clearTimeout(to);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, code: r.status, title: r.status === 504 ? "Gateway Timeout" : "Server Error",
+                          request_id: d.request_id || rid };
+      return { ok: true, ...d };
+    } catch (e) {
+      clearTimeout(to);
+      if (e.name === "AbortError") return { ok: false, code: 504, title: "Gateway Timeout", request_id: rid };
+      logInfo("backend unreachable, using mock", e); setLive(false);
+    }
   }
-  await new Promise(ok => setTimeout(ok, state.mockIncident ? 9500 + Math.random() * 600 : 280 + Math.random() * 60));
-  return { order_id: "TE-" + Math.random().toString(16).slice(2, 8).toUpperCase(), status: "confirmed" };
+  if (state.mockIncident) { await sleep(CHECKOUT_TIMEOUT_MS); return { ok: false, code: 504, title: "Gateway Timeout", request_id: rid }; }
+  await sleep(280 + Math.random() * 60);
+  return { ok: true, order_id: "TE-" + Math.random().toString(16).slice(2, 8).toUpperCase() };
 }
 
 /* ---------- backend link + black friday ---------- */
@@ -318,6 +371,7 @@ function setBlackFriday(on) {
   state.blackFriday = on;
   document.body.classList.toggle("bf", on);
   $("priceNow").textContent = eur(unitPrice());
+  $("addBtn").textContent = on ? `Buy now – ${eur(unitPrice())} →` : "Buy now →";
   renderCart();
 }
 /** Poll backend state: detects LIVE/MOCK and whether Black Friday is running. */
@@ -334,7 +388,7 @@ async function post(path) {
   try { await fetch(API + path, { method: "POST" }); } catch (e) { logInfo("post failed " + path, e); }
 }
 $("bfBtn").onclick = async () => { state.mockIncident = true; await post("/api/incident/start"); setBlackFriday(true); };
-$("resetBtn").onclick = async () => { state.mockIncident = false; await post("/api/reset"); setBlackFriday(false); };
+$("resetBtn").onclick = async () => { state.mockIncident = true; await post("/api/reset"); setBlackFriday(true); };
 $("demoToggle").onclick = () => $("demo").classList.toggle("on");
 document.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "d" && !e.target.closest("input")) $("demo").classList.toggle("on"); });
 $("apiInfo").textContent = "api: " + API;
@@ -357,6 +411,191 @@ function confetti() {
 
 /* ---------- init ---------- */
 renderCart(); poll(); setInterval(poll, 3000);
+$("priceNow").textContent = eur(unitPrice()); $("addBtn").textContent = `Buy now – ${eur(unitPrice())} →`;
+/* Black Friday countdown + live viewers (pure decoration) */
+let cdLeft = 5 * 3600 + 59 * 60 + 59;
+setInterval(() => {
+  cdLeft = Math.max(0, cdLeft - 1);
+  const h = String(Math.floor(cdLeft / 3600)).padStart(2, "0"), m = String(Math.floor(cdLeft % 3600 / 60)).padStart(2, "0"), sec = String(cdLeft % 60).padStart(2, "0");
+  $("cd").textContent = `${h}:${m}:${sec}`;
+  if (Math.random() < .3) $("viewers").textContent = 190 + Math.floor(Math.random() * 60);
+}, 1000);
 </script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+/*
+ * 3D shirt viewer (Three.js).
+ * Builds a T-shirt procedurally: the 2D shirt outline is extruded with a soft
+ * bevel and bent around the body axis, gets a fabric bump texture, and the
+ * "SHIP IT_" print is a canvas texture on a bent plane in front (plus a small
+ * print on the back). Drag to rotate, auto-rotates, floats gently.
+ * Falls back to the flat SVG shirt if WebGL/three.js cannot be loaded.
+ * Public hook: window.setShirtColor(hex, isLight) - used by the color swatches.
+ */
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+
+const host = document.getElementById("shirt3d");
+const BEND = 0.16;                         // how strongly the shirt wraps around the body
+const bend = (x) => -BEND * x * x;
+
+// ---------- renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+camera.position.set(0, 0.15, 8.2);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x1a2230, 0.9));
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(3, 4, 6); scene.add(key);
+const rim = new THREE.DirectionalLight(0x7cf29a, 2.0); rim.position.set(-5, 2, -4); scene.add(rim);
+const rim2 = new THREE.DirectionalLight(0x5ab8ff, 1.2); rim2.position.set(5, -1, -4); scene.add(rim2);
+
+// ---------- shirt geometry ----------
+function shirtShape() {
+  // SVG coords (400x420 viewBox) -> scene units
+  const P = (x, y) => [(x - 200) / 100, -(y - 215) / 100];
+  const s = new THREE.Shape();
+  s.moveTo(...P(122, 34));
+  s.lineTo(...P(165, 20));
+  s.quadraticCurveTo(...P(200, 62), ...P(235, 20));      // neckline
+  s.lineTo(...P(278, 34));
+  s.quadraticCurveTo(...P(330, 55), ...P(372, 86));      // shoulder -> sleeve
+  s.lineTo(...P(342, 158));                              // sleeve end
+  s.quadraticCurveTo(...P(320, 150), ...P(298, 138));
+  s.quadraticCurveTo(...P(292, 270), ...P(302, 404));    // side seam
+  s.quadraticCurveTo(...P(200, 418), ...P(98, 404));     // hem
+  s.quadraticCurveTo(...P(108, 270), ...P(102, 138));
+  s.quadraticCurveTo(...P(80, 150), ...P(58, 158));
+  s.lineTo(...P(28, 86));
+  s.quadraticCurveTo(...P(70, 55), ...P(122, 34));
+  return s;
+}
+const DEPTH = 0.32, BEVEL_T = 0.2;
+let geo = new THREE.ExtrudeGeometry(shirtShape(), {
+  depth: DEPTH, bevelEnabled: true, bevelThickness: BEVEL_T, bevelSize: 0.14,
+  bevelSegments: 10, curveSegments: 40, steps: 1,
+});
+geo.center();
+geo = new TessellateModifier(0.06, 10).modify(geo);   // add inner vertices so the bend is smooth
+geo.deleteAttribute("normal"); geo = mergeVertices(geo, 1e-4);  // close tiny cracks
+{ // bend around body axis
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) + bend(pos.getX(i)));
+  geo.computeVertexNormals();
+}
+
+// fabric bump texture (fine knit noise)
+function fabricTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 512;
+  const g = c.getContext("2d"), img = g.createImageData(512, 512);
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+    const knit = (Math.sin(x * 0.9) * Math.sin(y * 0.45) + 1) * 40;
+    // little per-pixel noise: strong noise shows up as bright speckles on light shirt colors
+    const v = 120 + knit + Math.random() * 10, i = (y * 512 + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  // soften the noise so the bump map has no single-pixel spikes
+  g.filter = "blur(1px)"; g.drawImage(c, 0, 0); g.filter = "none";
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 3);
+  t.anisotropy = 8;
+  return t;
+}
+const fabric = new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.92, metalness: 0, bumpMap: fabricTexture(), bumpScale: 0.25 });
+// ExtrudeGeometry UVs are in shape units -> scale them for the bump repeat
+const shirt = new THREE.Mesh(geo, fabric);
+
+// ---------- prints ----------
+function printCanvas(light, back) {
+  const c = document.createElement("canvas"); c.width = c.height = 1024;
+  const g = c.getContext("2d"); g.textAlign = "center";
+  const blue = light ? "#1d6fb8" : "#5ab8ff", green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#8a96a3";
+  const mono = 'ui-monospace, "JetBrains Mono", Consolas, monospace';
+  if (back) {
+    g.fillStyle = green; g.font = `700 64px ${mono}`; g.fillText("> tech_europe", 512, 300);
+    g.fillStyle = grey; g.font = `40px ${mono}`; g.fillText("/merch  // 2026", 512, 370);
+    g.fillStyle = blue; g.font = `36px ${mono}`; g.fillText("git push origin europe", 512, 760);
+  } else {
+    g.fillStyle = blue; g.font = `46px ${mono}`; g.fillText('$ git commit -m "europe"', 512, 230);
+    g.fillStyle = green; g.font = `800 230px ${mono}`; g.fillText("SHIP", 512, 470); g.fillText("IT_", 512, 690);
+    g.fillStyle = grey; g.font = `40px ${mono}`; g.fillText("// works on more than my machine", 512, 790);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+function printPlane(back) {
+  const g = new THREE.PlaneGeometry(1.9, 1.9, 40, 1);
+  const pos = g.attributes.position, zFront = DEPTH / 2 + BEVEL_T + 0.004;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, zFront + bend(pos.getX(i)));
+  g.computeVertexNormals();
+  const m = new THREE.MeshStandardMaterial({ map: printCanvas(false, back), transparent: true, roughness: 0.75,
+    polygonOffset: true, polygonOffsetFactor: -2 });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.y = 0.05;
+  if (back) { mesh.rotation.y = Math.PI; }
+  return mesh;
+}
+const front = printPlane(false), back = printPlane(true);
+
+const group = new THREE.Group();
+group.add(shirt, front, back);
+group.rotation.y = -0.35;
+scene.add(group);
+
+// soft floor shadow
+{
+  const c = document.createElement("canvas"); c.width = c.height = 256;
+  const g = c.getContext("2d"), grd = g.createRadialGradient(128, 128, 10, 128, 128, 128);
+  grd.addColorStop(0, "rgba(0,0,0,.55)"); grd.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  sh.rotation.x = -Math.PI / 2; sh.position.y = -2.35; scene.add(sh);
+}
+
+// ---------- controls ----------
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableZoom = false; controls.enablePan = false; controls.enableDamping = true;
+controls.autoRotate = true; controls.autoRotateSpeed = 1.6;
+controls.minPolarAngle = Math.PI / 2 - 0.45; controls.maxPolarAngle = Math.PI / 2 + 0.3;
+let resumeTimer;
+controls.addEventListener("start", () => { controls.autoRotate = false; clearTimeout(resumeTimer); });
+controls.addEventListener("end", () => { resumeTimer = setTimeout(() => (controls.autoRotate = true), 2500); });
+
+// ---------- sizing / loop ----------
+function resize() {
+  const w = host.clientWidth, h = Math.round(w * 1.02);
+  renderer.setSize(w, h, false); renderer.domElement.style.width = "100%"; renderer.domElement.style.height = h + "px";
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize); resize();
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  group.position.y = Math.sin(t * 1.2) * 0.06;
+  controls.update(); renderer.render(scene, camera);
+});
+
+// ---------- public hook for color swatches ----------
+window.setShirtColor = (hex, light) => {
+  fabric.color.set(hex);
+  front.material.map = printCanvas(light, false); front.material.needsUpdate = true;
+  back.material.map = printCanvas(light, true); back.material.needsUpdate = true;
+};
+document.getElementById("shirt").style.display = "none";
+host.classList.add("ready");
+</script>
+
 </body>
 </html>

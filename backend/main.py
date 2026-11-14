@@ -29,7 +29,7 @@ import uuid
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -103,13 +103,23 @@ class CheckoutRequest(BaseModel):
 
 @app.post("/api/checkout")
 async def checkout(req: CheckoutRequest | None = None):
-    """Simulate a checkout: really waits as long as the current infra latency (capped)."""
+    """
+    Simulate a checkout. Waits as long as the current infra latency; if that is
+    above CHECKOUT_TIMEOUT_MS the checkout gives up and returns HTTP 504.
+    """
     latency_ms = infra.checkout_latency_ms()
+    rid = "req_" + uuid.uuid4().hex[:8]
+    if latency_ms > config.CHECKOUT_TIMEOUT_MS:
+        await asyncio.sleep(config.CHECKOUT_TIMEOUT_MS / 1000)
+        log.warning("checkout %s failed: timeout after %sms (would take %sms)", rid, config.CHECKOUT_TIMEOUT_MS, round(latency_ms))
+        return JSONResponse(status_code=504, content={
+            "status": "failed", "error": "CHECKOUT_TIMEOUT", "request_id": rid,
+            "message": f"Upstream timeout after {config.CHECKOUT_TIMEOUT_MS}ms waiting for database connection"})
     start = time.time()
     await asyncio.sleep(min(latency_ms / 1000, config.CHECKOUT_MAX_REAL_SLEEP_S))
     took = round((time.time() - start) * 1000)
-    log.info("checkout took %sms", took)
-    return {"order_id": "TE-" + uuid.uuid4().hex[:6].upper(), "status": "confirmed",
+    log.info("checkout %s took %sms", rid, took)
+    return {"order_id": "TE-" + uuid.uuid4().hex[:6].upper(), "status": "confirmed", "request_id": rid,
             "duration_ms": took, "items": (req.items if req else [])}
 
 
@@ -186,6 +196,6 @@ def pending():
 
 
 # Serve the demo shop at http://localhost:8080/shop/ (if the folder exists)
-_SHOP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shop")
+_SHOP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo-site")
 if os.path.isdir(_SHOP_DIR):
     app.mount("/shop", StaticFiles(directory=_SHOP_DIR, html=True), name="shop")

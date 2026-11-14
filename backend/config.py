@@ -29,7 +29,9 @@ MOCK_STEP_DELAY_S = float(os.getenv("MOCK_STEP_DELAY_S", "1.4"))
 # --- Traffic ----------------------------------------------------------------
 BASE_RPS = 50                 # checkout requests per second, normal day
 INCIDENT_TRAFFIC_MULTIPLIER = 10
-INCIDENT_RAMP_S = 20          # seconds until Black Friday traffic is at full level
+START_IN_INCIDENT = True      # demo starts on Black Friday (checkout already failing)
+INCIDENT_STARTED_MINUTES_AGO = 8
+INCIDENT_RAMP_S = 5           # seconds until Black Friday traffic is at full level
 
 # --- Redis cache ------------------------------------------------------------
 REDIS_DEFAULT_MEMORY_GB = 4
@@ -48,6 +50,7 @@ CHECKOUT_BASE_LATENCY_MS = 280
 CHECKOUT_POOL_WAIT_FACTOR_MS = 16000  # extra latency per 100% over-subscription
 CHECKOUT_MAX_LATENCY_MS = 12000
 CHECKOUT_MAX_REAL_SLEEP_S = 10        # cap for POST /api/checkout real waiting
+CHECKOUT_TIMEOUT_MS = 3000            # checkout gives up after this -> HTTP 504
 
 # --- Metric history ---------------------------------------------------------
 METRIC_SAMPLE_INTERVAL_S = 2

@@ -70,12 +70,17 @@ class Infrastructure:
             for s in SERVICES:
                 self.history[s].clear()
             now = time.time()
+            if config.START_IN_INCIDENT:
+                # Black Friday started a few minutes ago -> history shows normal, then the drop
+                self.incident_started_at = now - config.INCIDENT_STARTED_MINUTES_AGO * 60
             self._event(now - 3600 * 5, "deploy", "checkout-service", "Deployed checkout-service v2.14.0")
             self._event(now - 3600 * 26, "config", "redis-cache", "maxmemory set to 4gb, policy allkeys-lru")
             # pre-fill history so charts are not empty
             steps = int(config.METRIC_HISTORY_MINUTES * 60 / config.METRIC_SAMPLE_INTERVAL_S)
             for i in range(steps, 0, -1):
                 self._record(now - i * config.METRIC_SAMPLE_INTERVAL_S)
+            if self.incident_started_at:
+                self._event(self.incident_started_at, "traffic", "shop", "Black Friday campaign started (-50% on all merch)")
             log.info("infra reset")
 
     def start_incident(self):
@@ -154,6 +159,8 @@ class Infrastructure:
             latency = min(config.CHECKOUT_MAX_LATENCY_MS,
                           config.CHECKOUT_BASE_LATENCY_MS + (1 - hit_rate) * 60 + oversub * config.CHECKOUT_POOL_WAIT_FACTOR_MS)
             db_wait = max(0.0, latency - config.CHECKOUT_BASE_LATENCY_MS - (1 - hit_rate) * 60)
+            # requests slower than the checkout timeout fail with 504
+            timeout_errors = max(0.0, 1 - config.CHECKOUT_TIMEOUT_MS / latency) * 100
             return {
                 "time": _iso(now),
                 "traffic_multiplier": round(traffic, 2),
@@ -161,7 +168,7 @@ class Infrastructure:
                     "requests_per_s": rps,
                     "p95_latency_ms": latency,
                     "cpu_percent": 18 + 6 * ramp,
-                    "error_rate_percent": 0.1 + 0.25 * ramp,
+                    "error_rate_percent": 0.1 + timeout_errors,
                     "replicas": 3,
                     "db_wait_ms": db_wait,
                 },
@@ -284,6 +291,8 @@ class Infrastructure:
                 total = int(_noise(lat))
                 wait = int(_noise(m["db_wait_ms"]))
                 return random.choice([
+                    f"ERROR [checkout] req={rid} POST /checkout 504 - timeout after {config.CHECKOUT_TIMEOUT_MS}ms acquiring db connection (cache=MISS)",
+                    f"ERROR [checkout] req={rid} POST /checkout 504 - timeout after {config.CHECKOUT_TIMEOUT_MS}ms acquiring db connection (cache=MISS)",
                     f"WARN  [checkout] req={rid} POST /checkout completed in {total}ms (db_pool_wait={wait}ms, cache=MISS)",
                     f"WARN  [checkout] req={rid} slow request: product lookup took {wait}ms waiting for db connection",
                     f"INFO  [hikari] pool=checkout-db active=100 idle=0 waiting={random.randint(40, 160)}",

@@ -43,7 +43,7 @@ log = logging.getLogger("agent")
 # Last proposed action, waiting for human approval
 pending_action: dict | None = None
 
-SYSTEM_PROMPT = """You are "Gemini On-Call", an AI Site Reliability Engineer.
+SYSTEM_PROMPT = """You are "Stratus", an AI Site Reliability Engineer powered by Gemini.
 You investigate production incidents of an e-commerce shop (Tech Europe Merch).
 
 Rules:
@@ -208,7 +208,7 @@ MOCK_SCRIPT = [
     ("Checkout is slow - first I check overall health and recent events.", "get_infra_overview", {}),
     ("Let me see how checkout depends on other services.", "get_service_graph", {}),
     ("Is checkout-service itself overloaded? Checking its metrics.", "query_metrics", {"service": "checkout-service"}),
-    ("CPU and errors look normal - hypothesis 'checkout overloaded' rejected. Checking traces.", "get_traces", {}),
+    ("Errors are timeouts but CPU is normal - checkout is waiting, not overloaded. Checking traces.", "get_traces", {}),
     ("Time is spent waiting for DB connections. Checking postgres.", "query_metrics", {"service": "postgres-db"}),
     ("Pool exhausted. Why so many queries? Checking the cache in front of the DB.", "query_metrics", {"service": "redis-cache"}),
     ("Hit rate collapsed. Confirming with Redis logs.", "query_logs", {"service": "redis-cache"}),
@@ -234,7 +234,7 @@ def _investigate_mock(symptom: str):
                   f"Cache hit rate 95% → {r['hit_rate_percent']:.0f}%",
                   f"Postgres connections {d['active_connections']:.0f}/{d['max_connections']} (pool exhausted)",
                   f"Checkout p95 {c['p95_latency_ms'] / 1000:.1f}s"],
-        "evidence": [f"checkout CPU only {c['cpu_percent']:.0f}% - service itself healthy",
+        "evidence": [f"checkout error rate {c['error_rate_percent']:.0f}% (504 timeouts) but CPU only {c['cpu_percent']:.0f}%",
                      f"traces: most time in postgres pool.acquire (~{c['db_wait_ms'] / 1000:.1f}s)",
                      f"redis used {r['used_memory_gb']:.1f}/{r['memory_gb']:g} GB, policy allkeys-lru"],
         "resource": "redis-cache", "action": "scale_memory", "params": {"memory_gb": target},
