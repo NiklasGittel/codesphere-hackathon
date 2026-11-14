@@ -17,7 +17,7 @@ load_dotenv()
 # --- Gemini / Agent ---------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Check the exact model id in AI Studio (model picker) and override via .env
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 # "gemini" = real agent, "mock" = scripted agent (no key needed, demo-safe)
 AGENT_MODE = os.getenv("AGENT_MODE", "gemini" if GEMINI_API_KEY else "mock")
 # If the real agent fails mid-demo, fall back to the scripted run

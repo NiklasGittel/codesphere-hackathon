@@ -70,7 +70,7 @@ Alle Stellschrauben (Dauer, Latenzen, Scaling-Zeit) stehen in `config.py`.
 
 ```powershell
 gcloud run deploy ai-sre-backend --source . --region europe-west1 --allow-unauthenticated --max-instances 1 `
-  --set-env-vars GEMINI_API_KEY=DEIN_KEY,GEMINI_MODEL=gemini-3.1-pro-preview
+  --set-env-vars GEMINI_API_KEY=DEIN_KEY,GEMINI_MODEL=gemini-3.7-flash
 ```
 
 Wichtig: Cloud Run kann mehrere Instanzen starten, und der Zustand liegt im Speicher. Deshalb steht `--max-instances 1` im Befehl.
