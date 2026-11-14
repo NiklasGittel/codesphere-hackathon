@@ -509,6 +509,7 @@ setInterval(() => {
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 const MODEL_URLS = [
   "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
@@ -590,11 +591,22 @@ ring.rotation.x = -Math.PI / 2; ring.position.y = 0.006; scene.add(ring);
 function printCanvas(light) {
   const c = document.createElement("canvas"); c.width = c.height = 1024;
   const g = c.getContext("2d"); g.textAlign = "center";
-  const blue = light ? "#1d6fb8" : "#5ab8ff", green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#a3adb8";
+  const green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#a3adb8", ink = light ? "#15181c" : "#f2f5f8";
   const mono = 'ui-monospace, "JetBrains Mono", Consolas, monospace';
-  g.fillStyle = blue; g.font = `600 52px ${mono}`; g.fillText('$ git commit -m "europe"', 512, 230);
-  g.fillStyle = green; g.font = `800 250px ${mono}`; g.fillText("SHIP", 512, 480); g.fillText("IT_", 512, 710);
-  g.fillStyle = grey; g.font = `600 46px ${mono}`; g.fillText("// works on more than my machine", 512, 810);
+  // {Tech: Europe} logo: dotted ring + outlined monospace wordmark
+  g.save(); g.translate(512, 175); g.font = `800 92px ${mono}`;
+  const word = "{Tech: Europe}", ww = g.measureText(word).width, ringR = 40, gap = 26;
+  const x0 = -(ww + ringR * 2 + gap) / 2;
+  g.fillStyle = ink;
+  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2;
+    g.beginPath(); g.arc(x0 + ringR + Math.cos(a) * ringR, Math.sin(a) * ringR, 6.5, 0, Math.PI * 2); g.fill(); }
+  g.textAlign = "left"; g.textBaseline = "middle"; g.lineJoin = "round";
+  const tx = x0 + ringR * 2 + gap;
+  g.globalAlpha = 0.28; g.fillText(word, tx, 4); g.globalAlpha = 1;
+  g.strokeStyle = ink; g.lineWidth = 5; g.strokeText(word, tx, 4);
+  g.restore();
+  g.fillStyle = green; g.font = `800 250px ${mono}`; g.fillText("SHIP", 512, 500); g.fillText("IT_", 512, 730);
+  g.fillStyle = grey; g.font = `600 46px ${mono}`; g.fillText("// works on more than my machine", 512, 830);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
@@ -611,35 +623,93 @@ function printGeometry(size, curve) {
   g.computeVertexNormals(); return g;
 }
 
+// ---------- t-shirt ----------
+const TEE_HEM = 0.74;        // hem / cuff rib is a bit darker than the shirt
+const teeMaterial = (hex) => new THREE.MeshStandardMaterial({ color: hex, roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide });
+/** Vertex colors: 1 for fabric, TEE_HEM for vertices where isRib(y) is true. */
+function ribColors(g, isRib) {
+  const p = g.attributes.position, c = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) c.fill(isRib(p.getY(i)) ? TEE_HEM : 1, i * 3, i * 3 + 3);
+  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+}
+/** Short sleeve: open tube from shoulder down the upper arm, with a darker cuff. */
+function sleeveGeometry(rTop, rBottom, h) {
+  const g = new THREE.CylinderGeometry(rTop, rBottom, h, 24, 6, true);
+  ribColors(g, y => y < -h / 2 + 0.06);
+  return g;
+}
+/** Place a sleeve along the bone segment from -> to (world space, bind pose). */
+function placeSleeve(mesh, from, to, offset) {
+  const dir = new THREE.Vector3().subVectors(to, from).normalize();
+  mesh.position.copy(from).addScaledVector(dir, offset);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().negate());
+}
+
 // ---------- figure: RobotExpressive ----------
-let proto = null;            // loaded gltf (with print attached to the torso)
+let proto = null;            // loaded gltf (with t-shirt + print attached)
 let protoScale = 1;
+let robotMat = null;         // neutral metal body, shared by all figures
+const wp = (o) => o.getWorldPosition(new THREE.Vector3());
 function preparePrototype(gltf) {
   const s = gltf.scene;
   s.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(s);
   protoScale = FIG_H / (box.max.y - box.min.y);
   s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-  // print plane in model space, attached to the rigid torso group (follows the Body bone)
+
+  // shirt body: the torso meshes, merged, smoothed and inflated a little (world space, bind pose)
   const torso = s.getObjectByName("Torso");
-  const plane = new THREE.Mesh(printGeometry(1.0, 0.22), PRINT_MATS[0]);
+  const parts = ["Torso_2", "Torso_3"].map(n => s.getObjectByName(n)).filter(Boolean);
+  let g = mergeGeometries(parts.map(m => {
+    const c = new THREE.BufferGeometry();
+    c.setAttribute("position", m.geometry.attributes.position.clone()); c.setIndex(m.geometry.index.clone());
+    return c.applyMatrix4(m.matrixWorld);
+  }));
+  g = mergeVertices(g, 1e-3); g.computeVertexNormals();
+  const p = g.attributes.position, n = g.attributes.normal;
+  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + n.getX(i) * 0.06, p.getY(i) + n.getY(i) * 0.03, p.getZ(i) + n.getZ(i) * 0.06);
+  g.computeVertexNormals();
+  ribColors(g, y => y < 1.42);
+  const tee = new THREE.Mesh(g, teeMaterial(0xffffff));
+  tee.name = "teeBody"; tee.castShadow = true; tee.frustumCulled = false;
+  s.add(tee); tee.updateMatrixWorld(true);
+  parts.forEach(m => (m.visible = false));       // the shirt replaces the visible torso shell
+
+  // chest print: raycast onto the front of the shirt and sit just above it
+  const hit = new THREE.Raycaster(new THREE.Vector3(0, 2.0, 5), new THREE.Vector3(0, 0, -1)).intersectObject(tee)[0];
+  const plane = new THREE.Mesh(printGeometry(0.98, 0.06), PRINT_MATS[0]);
   plane.name = "shirtPrint";
-  plane.position.set(0, 2.02, 0.705);
-  s.add(plane); plane.updateMatrixWorld(true);
-  (torso || s).attach(plane);
+  if (hit) {
+    const nrm = hit.face.normal.clone();
+    plane.position.copy(hit.point).addScaledVector(nrm, 0.012);
+    plane.lookAt(plane.position.clone().add(nrm));
+  } else plane.position.set(0, 2.0, 0.78);
+  s.add(plane);
+  torso.attach(tee); torso.attach(plane);
+
+  // sleeves on the upper arms
+  for (const side of ["L", "R"]) {
+    const up = s.getObjectByName("UpperArm" + side), low = s.getObjectByName("LowerArm" + side);
+    if (!up || !low) continue;
+    const sl = new THREE.Mesh(sleeveGeometry(0.27, 0.3, 0.46), teeMaterial(0xffffff));
+    sl.name = "teeSleeve"; sl.castShadow = true; sl.frustumCulled = false;
+    placeSleeve(sl, wp(up), wp(low), 0.1);
+    s.add(sl); sl.updateMatrixWorld(true); up.attach(sl);
+  }
+
+  s.traverse(o => { if (o.isMesh && o.material.name === "Main" && !robotMat) {
+    robotMat = o.material.clone(); robotMat.color.set(0x8b949e); robotMat.metalness = 0.35; robotMat.roughness = 0.42; } });
   proto = gltf;
 }
 function makeRobot(hex, light) {
   const model = SkeletonUtils.clone(proto.scene);
   model.scale.setScalar(protoScale);
-  let bodyMat = null;
+  const bodyMat = teeMaterial(hex);
   model.traverse(o => {
     if (!o.isMesh) return;
-    if (o.name === "shirtPrint") { o.material = printMat(light); return; }
-    if (o.material.name === "Main") {
-      if (!bodyMat) { bodyMat = o.material.clone(); bodyMat.color.set(hex); bodyMat.roughness = 0.62; bodyMat.metalness = 0.05; }
-      o.material = bodyMat;
-    }
+    if (o.name === "shirtPrint") o.material = printMat(light);
+    else if (o.name.startsWith("tee")) o.material = bodyMat;
+    else if (o.material.name === "Main") o.material = robotMat;
   });
   const root = new THREE.Group(); root.add(model);
   const mixer = new THREE.AnimationMixer(model);
@@ -660,14 +730,15 @@ function makeRobot(hex, light) {
       cur = next;
     },
     update(dt) { mixer.update(dt); },
-    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); bodyMat?.dispose(); },
+    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); bodyMat.dispose(); },
   };
 }
 
 // ---------- figure: procedural fallback (if the model cannot be loaded) ----------
 function makeFallback(hex, light) {
-  const body = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.6 });
+  const body = new THREE.MeshStandardMaterial({ color: 0x8b949e, roughness: 0.42, metalness: 0.35 });
   const grey = new THREE.MeshStandardMaterial({ color: 0x9aa3ab, roughness: 0.5 });
+  const tee = teeMaterial(hex);
   const root = new THREE.Group(), model = new THREE.Group(); root.add(model);
   const part = (geo, mat, x, y, z, parent) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
   const limb = (x, y, len, r, mat, parent) => { const p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p);
@@ -678,8 +749,11 @@ function makeFallback(hex, light) {
   const eye = new THREE.MeshBasicMaterial({ color: 0x7cf29a });
   part(new THREE.SphereGeometry(0.045, 10, 8), eye, 0.1, 0.98, 0.25, torso);
   part(new THREE.SphereGeometry(0.045, 10, 8), eye, -0.1, 0.98, 0.25, torso);
-  const pr = part(printGeometry(0.44, 0.6), printMat(light), 0, 0.36, 0.345, torso); pr.castShadow = false;
+  const teeGeo = new THREE.CylinderGeometry(0.38, 0.42, 0.7, 28, 6, true); ribColors(teeGeo, y => y < -0.29);
+  part(teeGeo, tee, 0, 0.3, 0, torso);
+  const pr = part(printGeometry(0.44, 0.9), printMat(light), 0, 0.34, 0.405, torso); pr.castShadow = false;
   const armL = limb(0.45, 0.6, 0.42, 0.085, body, torso), armR = limb(-0.45, 0.6, 0.42, 0.085, body, torso);
+  for (const arm of [armL, armR]) part(sleeveGeometry(0.13, 0.15, 0.26), tee, 0, -0.1, 0, arm);
   const legL = limb(0.16, 0.95, 0.7, 0.11, grey, model), legR = limb(-0.16, 0.95, 0.7, 0.11, grey, model);
   let mode = "Idle", t = 0;
   return {
@@ -703,7 +777,7 @@ function makeFallback(hex, light) {
         torso.position.y += Math.sin(t * 2) * 0.015; armL.rotation.z = 0.08; armR.rotation.z = -0.08;
       }
     },
-    dispose() {},
+    dispose() { tee.dispose(); },
   };
 }
 const makeFigure = (hex, light) => proto ? makeRobot(hex, light) : makeFallback(hex, light);
@@ -809,12 +883,13 @@ function updateCamera(dt, t) {
   const aspect = camera.aspect;
   const focus = current ? current.fig.root.position : CENTER;
   const dancing = current && current.mode === "dance";
-  let dist = dancing ? 7.0 : 7.9;
+  // wide while figures walk, close-up on the shirt while dancing
+  let dist = dancing ? 4.1 : 7.4;
   if (aspect < 1.15) dist *= Math.min(1.45, Math.pow(1.15 / aspect, 0.6));   // portrait: step back a bit
-  camGoal.set(Math.sin(t * 0.18) * 0.7 + focus.x * 0.35 + pointer.x * 0.5,
-              1.55 + (dancing ? 0 : 0.15) - pointer.y * 0.2,
+  camGoal.set(Math.sin(t * 0.18) * (dancing ? 0.45 : 0.7) + focus.x * 0.35 + pointer.x * 0.4,
+              (dancing ? 1.05 : 1.6) - pointer.y * 0.15,
               dist + focus.z * 0.25);
-  lookGoal.set(focus.x * 0.45, 0.82, focus.z * 0.3);
+  lookGoal.set(focus.x * 0.45, dancing ? 0.86 : 0.85, focus.z * 0.3);
   const k = 1 - Math.exp(-dt * 1.8);
   camera.position.lerp(camGoal, k); lookAt.lerp(lookGoal, k);
   camera.lookAt(lookAt);
@@ -850,7 +925,7 @@ function renderThumbnails() {
   const s = new THREE.Scene(); addLights(s);
   const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(2, 3, 5); s.add(key);
   const cam = new THREE.PerspectiveCamera(24, 208 / 140, 0.1, 30);
-  cam.position.set(0, 1.25, 6.4); cam.lookAt(0, 1.0, 0);
+  cam.position.set(0, 1.05, 3.6); cam.lookAt(0, 0.95, 0);   // upper body: the shirt fills the card
   document.querySelectorAll("#colors .card").forEach(card => {
     const f = makeFigure(card.dataset.c, card.dataset.light === "1");
     f.play("Idle"); f.update(0.6); f.root.rotation.y = -0.3;
