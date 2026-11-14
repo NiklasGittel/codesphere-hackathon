@@ -8,11 +8,9 @@
   with a 504, until the AI SRE agent fixes the infrastructure.
 
   Product stage: a 3D studio (Three.js). Each colorway in the bar at the
-  bottom of the stage is a model wearing the shirt in that color. Picking a
-  colorway: the current model waves and walks off to the side, the new one
-  steps out of its card, walks backwards to the center (front to the camera)
-  and stands there. Models: Michelle wearing a modelled t-shirt, idle/walk
-  from Xbot (three.js examples, Mixamo rigs); fallback: a procedural figure.
+  bottom of the stage is the shirt in that color. Picking a colorway: the
+  current shirt spins off to the side, the new one flies out of its card into
+  the center, floating and slowly turning (drag to rotate).
 
   Backend: POST /api/checkout, POST /api/incident/start, POST /api/reset,
   GET /api/infra/state (see backend/README.md).
@@ -59,7 +57,8 @@
          radial-gradient(ellipse 55% 60% at 50% 0%,rgba(255,255,255,.07),transparent 70%),
          radial-gradient(ellipse 70% 45% at 50% 100%,rgba(124,242,154,.06),transparent 70%),
          linear-gradient(#0e1216,#0b0d10 70%)}
-  #scene3d{position:absolute;inset:0}
+  #scene3d{position:absolute;inset:0;cursor:grab;touch-action:pan-y}
+  #scene3d:active{cursor:grabbing}
   #scene3d canvas{display:block;width:100%;height:100%}
   .stage .tag{position:absolute;top:18px;left:18px;font-family:var(--mono);font-size:12px;color:var(--accent);
        border:1px solid rgba(124,242,154,.35);padding:4px 8px;border-radius:6px;background:rgba(11,13,16,.6);z-index:2}
@@ -244,7 +243,7 @@
     <div class="bf-info"><span>ends in <b id="cd">05:59:59</b></span><span><b id="viewers">214</b> viewing now</span></div>
 
     <div class="label">color · <b id="colorName">Midnight</b></div>
-    <div class="pick"><span class="sw" id="colorSw" style="background:#15181c"></span>pick a colorway in the stage bar — it walks on stage</div>
+    <div class="pick"><span class="sw" id="colorSw" style="background:#15181c"></span>pick a colorway in the stage bar — it flies onto the stage</div>
 
     <div class="label">size</div>
     <div class="opts" id="sizes">
@@ -499,31 +498,23 @@ setInterval(() => {
 <script type="module">
 /*
  * 3D product stage (Three.js).
- * Dark studio: floor with soft spotlight shadow, green/blue rim lights, faint grid.
- * Each colorway = one model (Michelle) wearing a modelled, loose t-shirt that is skinned to
- * her skeleton, with the {Tech: Europe} / "SHIP IT_" print in the fabric. Selecting a
- * colorway: the current model waves and walks off, the new one grows out of its card,
- * walks backwards to the center and stands there (idle, turning a little).
- * Figures are small state machines (spawn -> walkIn -> turn -> dance -> wave -> walkOut),
- * so fast clicking never breaks the sequence.
+ * Dark studio (spotlight, soft floor shadow, green/blue rim lights, faint grid) with the
+ * "Ship It" shirt floating in the middle: extruded shirt outline with a soft bevel, bent
+ * around the body axis, knit bump texture, prints on the front ({Tech: Europe} + SHIP IT_)
+ * and on the back. Colorway bar: picking a color sends the current shirt spinning off to the
+ * side while the new one flies out of its card into the center. Drag to rotate; otherwise it
+ * turns slowly by itself.
  * Public hook: window.stageSelect(cardElement) - called by the colorway cards.
  */
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
-// Human mannequin (Xbot) + a dance clip (SambaDance from Michelle), both Mixamo rigs from the three.js examples
-const modelUrls = (file) => [
-  `https://threejs.org/examples/models/gltf/${file}`,
-  `https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/${file}`,
-];
-const FIG_H = 2.0;          // figure height in scene units
-const WALK_SPEED = 1.35;    // units/s, matches the walk clip at timeScale 1
-const EXIT_TIMESCALE = 1.35;
-const FADE = 0.35;          // animation crossfade in seconds
-const SPAWN_S = 0.7;        // grow-out-of-the-card duration
-const WAVE_S = 1.35;        // how long the leaving figure waves
-const CENTER = new THREE.Vector3(0, 0, 0);
+const SHIRT_Y = 1.25;       // height of the floating shirt
+const SHIRT_SCALE = 0.46;   // shirt geometry is ~3.9 units tall -> ~1.8
+const FLY_IN_S = 1.1, FLY_OUT_S = 0.8;
+const AUTO_SPIN = 0.45;     // speed of the gentle idle swing
+const CENTER = new THREE.Vector3(0, SHIRT_Y, 0);
 
 const stageEl = document.getElementById("stage");
 const host = document.getElementById("scene3d");
@@ -549,18 +540,18 @@ host.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x0b0d10, 9, 19);
 const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 60);
-camera.position.set(0, 1.6, 8);
-const lookAt = new THREE.Vector3(0, 1.0, 0);
+camera.position.set(0, 1.45, 5.6);
+const lookAt = new THREE.Vector3(0, 1.05, 0);
 
 function addLights(target) {
-  target.add(new THREE.HemisphereLight(0xc8d8ff, 0x0b0d10, 0.7));
-  const fill = new THREE.DirectionalLight(0xffffff, 1.3); fill.position.set(-3, 2.5, 6); target.add(fill);
-  const rim = new THREE.DirectionalLight(0x7cf29a, 2.2); rim.position.set(-5, 3, -4); target.add(rim);
-  const rim2 = new THREE.DirectionalLight(0x5ab8ff, 1.4); rim2.position.set(5, 2.5, -3.5); target.add(rim2);
+  target.add(new THREE.HemisphereLight(0xc8d8ff, 0x0b0d10, 0.8));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(3, 4, 6); target.add(key);
+  const rim = new THREE.DirectionalLight(0x7cf29a, 2.0); rim.position.set(-5, 2, -4); target.add(rim);
+  const rim2 = new THREE.DirectionalLight(0x5ab8ff, 1.2); rim2.position.set(5, -1, -4); target.add(rim2);
 }
 addLights(scene);
-const spot = new THREE.SpotLight(0xffffff, 140, 20, 0.45, 0.75, 1.6);
-spot.position.set(0.6, 8, 3.2);
+const spot = new THREE.SpotLight(0xffffff, 90, 20, 0.42, 0.75, 1.6);
+spot.position.set(0.4, 7.5, 2.2);
 spot.castShadow = true;
 spot.shadow.mapSize.set(1024, 1024);
 spot.shadow.bias = -0.0004;
@@ -581,554 +572,203 @@ floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 const grid = new THREE.GridHelper(28, 56, 0x7cf29a, 0x7cf29a);
 grid.material.transparent = true; grid.material.opacity = 0.06; grid.material.depthWrite = false; grid.position.y = 0.002;
 scene.add(grid);
-const pool = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({
+const pool = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({
   map: radialTexture([[0, "rgba(255,255,255,.16)"], [0.5, "rgba(255,255,255,.05)"], [1, "rgba(255,255,255,0)"]]),
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
 pool.rotation.x = -Math.PI / 2; pool.position.y = 0.004; scene.add(pool);
-const ring = new THREE.Mesh(new THREE.RingGeometry(1.12, 1.15, 128),
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 0.975, 128),
   new THREE.MeshBasicMaterial({ color: 0x7cf29a, transparent: true, opacity: 0.25, depthWrite: false }));
 ring.rotation.x = -Math.PI / 2; ring.position.y = 0.006; scene.add(ring);
 
-// ---------- chest print ----------
-function printCanvas(light) {
+// ---------- shirt geometry (shared by all colorways) ----------
+const BEND = 0.16;                         // how strongly the shirt wraps around the body
+const bend = (x) => -BEND * x * x;
+function shirtShape() {
+  // SVG coords (400x420 viewBox) -> shape units
+  const P = (x, y) => [(x - 200) / 100, -(y - 215) / 100];
+  const s = new THREE.Shape();
+  s.moveTo(...P(122, 34));
+  s.lineTo(...P(165, 20));
+  s.quadraticCurveTo(...P(200, 62), ...P(235, 20));      // neckline
+  s.lineTo(...P(278, 34));
+  s.quadraticCurveTo(...P(330, 55), ...P(372, 86));      // shoulder -> sleeve
+  s.lineTo(...P(342, 158));                              // sleeve end
+  s.quadraticCurveTo(...P(320, 150), ...P(298, 138));
+  s.quadraticCurveTo(...P(292, 270), ...P(302, 404));    // side seam
+  s.quadraticCurveTo(...P(200, 418), ...P(98, 404));     // hem
+  s.quadraticCurveTo(...P(108, 270), ...P(102, 138));
+  s.quadraticCurveTo(...P(80, 150), ...P(58, 158));
+  s.lineTo(...P(28, 86));
+  s.quadraticCurveTo(...P(70, 55), ...P(122, 34));
+  return s;
+}
+const DEPTH = 0.32, BEVEL_T = 0.2;
+let SHIRT_GEO = new THREE.ExtrudeGeometry(shirtShape(), {
+  depth: DEPTH, bevelEnabled: true, bevelThickness: BEVEL_T, bevelSize: 0.14,
+  bevelSegments: 10, curveSegments: 40, steps: 1,
+});
+SHIRT_GEO.center();
+SHIRT_GEO = new TessellateModifier(0.06, 10).modify(SHIRT_GEO);   // inner vertices so the bend is smooth
+SHIRT_GEO.deleteAttribute("normal"); SHIRT_GEO = mergeVertices(SHIRT_GEO, 1e-4);   // close tiny cracks
+{
+  const pos = SHIRT_GEO.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) + bend(pos.getX(i)));
+  SHIRT_GEO.computeVertexNormals();
+}
+
+// fabric bump texture (fine knit; low noise, blurred -> no bright speckles on light colors)
+const FABRIC_BUMP = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 512;
+  const g = c.getContext("2d"), img = g.createImageData(512, 512);
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+    const knit = (Math.sin(x * 0.9) * Math.sin(y * 0.45) + 1) * 40;
+    const v = 120 + knit + Math.random() * 10, i = (y * 512 + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  g.filter = "blur(1px)"; g.drawImage(c, 0, 0); g.filter = "none";
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 3); t.anisotropy = 8;
+  return t;
+})();
+
+// ---------- prints ----------
+function printCanvas(light, back) {
   const c = document.createElement("canvas"); c.width = c.height = 1024;
   const g = c.getContext("2d"); g.textAlign = "center";
-  const green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#a3adb8", ink = light ? "#15181c" : "#f2f5f8";
+  const blue = light ? "#1d6fb8" : "#5ab8ff", green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#a3adb8", ink = light ? "#15181c" : "#f2f5f8";
   const mono = 'ui-monospace, "JetBrains Mono", Consolas, monospace';
-  // {Tech: Europe} logo: dotted ring + outlined monospace wordmark
-  g.save(); g.translate(512, 175); g.font = `800 92px ${mono}`;
-  const word = "{Tech: Europe}", ww = g.measureText(word).width, ringR = 40, gap = 26;
-  const x0 = -(ww + ringR * 2 + gap) / 2;
-  g.fillStyle = ink;
-  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2;
-    g.beginPath(); g.arc(x0 + ringR + Math.cos(a) * ringR, Math.sin(a) * ringR, 6.5, 0, Math.PI * 2); g.fill(); }
-  g.textAlign = "left"; g.textBaseline = "middle"; g.lineJoin = "round";
-  const tx = x0 + ringR * 2 + gap;
-  g.globalAlpha = 0.28; g.fillText(word, tx, 4); g.globalAlpha = 1;
-  g.strokeStyle = ink; g.lineWidth = 5; g.strokeText(word, tx, 4);
-  g.restore();
-  g.fillStyle = green; g.font = `800 250px ${mono}`; g.fillText("SHIP", 512, 500); g.fillText("IT_", 512, 730);
-  g.fillStyle = grey; g.font = `600 46px ${mono}`; g.fillText("// works on more than my machine", 512, 830);
+  if (back) {
+    g.fillStyle = green; g.font = `700 64px ${mono}`; g.fillText("> tech_europe", 512, 300);
+    g.fillStyle = grey; g.font = `40px ${mono}`; g.fillText("/merch  // 2026", 512, 370);
+    g.fillStyle = blue; g.font = `36px ${mono}`; g.fillText("git push origin europe", 512, 760);
+  } else {
+    // {Tech: Europe} logo: dotted ring + outlined monospace wordmark
+    g.save(); g.translate(512, 175); g.font = `800 92px ${mono}`;
+    const word = "{Tech: Europe}", ww = g.measureText(word).width, ringR = 40, gap = 26;
+    const x0 = -(ww + ringR * 2 + gap) / 2;
+    g.fillStyle = ink;
+    for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2;
+      g.beginPath(); g.arc(x0 + ringR + Math.cos(a) * ringR, Math.sin(a) * ringR, 6.5, 0, Math.PI * 2); g.fill(); }
+    g.textAlign = "left"; g.textBaseline = "middle"; g.lineJoin = "round";
+    const tx = x0 + ringR * 2 + gap;
+    g.globalAlpha = 0.28; g.fillText(word, tx, 4); g.globalAlpha = 1;
+    g.strokeStyle = ink; g.lineWidth = 5; g.strokeText(word, tx, 4);
+    g.restore();
+    g.fillStyle = green; g.font = `800 250px ${mono}`; g.fillText("SHIP", 512, 500); g.fillText("IT_", 512, 730);
+    g.fillStyle = grey; g.font = `600 46px ${mono}`; g.fillText("// works on more than my machine", 512, 830);
+  }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
-const PRINT_MATS = [false, true].map(light => { const map = printCanvas(light); return new THREE.MeshStandardMaterial({
-  map, transparent: true, roughness: 0.8, depthWrite: false,
-  // slight glow so the print stays readable on dark bodies (terminal look)
-  emissiveMap: map, emissive: 0xffffff, emissiveIntensity: light ? 0.12 : 0.6,
-  polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }); });
-const printMat = (light) => PRINT_MATS[light ? 1 : 0];
-/** Plane slightly bent around the vertical axis so it hugs a rounded chest. */
-function printGeometry(size, curve) {
-  const g = new THREE.PlaneGeometry(size, size, 24, 1), p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) p.setZ(i, -curve * p.getX(i) ** 2);
+const PRINT_GEO = (() => {
+  const g = new THREE.PlaneGeometry(1.9, 1.9, 40, 1);
+  const pos = g.attributes.position, zFront = DEPTH / 2 + BEVEL_T + 0.004;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, zFront + bend(pos.getX(i)));
   g.computeVertexNormals(); return g;
+})();
+const printMats = {};
+function printMat(light, back) {
+  const k = `${light}-${back}`;
+  return printMats[k] ||= new THREE.MeshStandardMaterial({ map: printCanvas(light, back), transparent: true, roughness: 0.75,
+    polygonOffset: true, polygonOffsetFactor: -2 });
 }
 
-// ---------- t-shirt helpers (also used by the procedural fallback figure) ----------
-const TEE_HEM = 0.8;         // rib at hem / cuffs / collar is a bit darker than the shirt
-const teeMaterial = (hex) => new THREE.MeshStandardMaterial({ color: hex, roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide });
-/** Vertex colors: 1 for fabric, TEE_HEM for vertices where isRib(y) is true. */
-function ribColors(g, isRib) {
-  const p = g.attributes.position, c = new Float32Array(p.count * 3);
-  for (let i = 0; i < p.count; i++) c.fill(isRib(p.getY(i)) ? TEE_HEM : 1, i * 3, i * 3 + 3);
-  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
-}
-function sleeveGeometry(rTop, rBottom, h) {
-  const g = new THREE.CylinderGeometry(rTop, rBottom, h, 24, 6, true);
-  ribColors(g, y => y < -h / 2 + 0.06);
-  return g;
+function makeShirt(hex, light) {
+  const mat = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.92, metalness: 0, bumpMap: FABRIC_BUMP, bumpScale: 0.25 });
+  const body = new THREE.Mesh(SHIRT_GEO, mat); body.castShadow = true;
+  const front = new THREE.Mesh(PRINT_GEO, printMat(light, false)); front.position.y = 0.05;
+  const back = new THREE.Mesh(PRINT_GEO, printMat(light, true)); back.position.y = 0.05; back.rotation.y = Math.PI;
+  const inner = new THREE.Group(); inner.add(body, front, back); inner.scale.setScalar(SHIRT_SCALE);
+  const root = new THREE.Group(); root.add(inner);
+  return { root, dispose() { mat.dispose(); } };
 }
 
-// ---------- the model: Michelle (Mixamo) wearing a modelled t-shirt ----------
-let proto = null;            // body gltf (with the shirt added)
-let protoScale = 1;
-let animClips = {};          // Idle / Walking, retargeted from Xbot onto the body
-let shirtLayout = null;      // where the print sits in the shirt texture
-const wp = (o) => o.getWorldPosition(new THREE.Vector3());
-const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-
-/**
- * Model a regular t-shirt around a Mixamo body in its bind pose and skin it to the same skeleton:
- * - torso: a tube measured from the body (64 directions x 40 heights) plus ease; below the bust
- *   it falls straight down with a slight flare and a few soft folds; crew neck, shoulder slope
- * - sleeves: wide tubes around the upper arms, opening towards the cuff
- * - uv: the torso is unrolled (front = middle of the texture), so the print sits in the fabric
- * Built in world space, then converted to the mesh's raw geometry space.
- */
-function buildShirt(body, s) {
-  s.updateMatrixWorld(true); body.skeleton.update();
-  const g = body.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
-  const bones = body.skeleton.bones, boneIdx = (n) => bones.findIndex(b => b.name === "mixamorig" + n);
-  const W = body.matrixWorld, N = pos.count, wv = new Float32Array(N * 3), dom = new Int16Array(N), v = new THREE.Vector3();
-  let ext = [0, 0, 0, 0];                                    // vertices with min x, max x, max y, max z
-  for (let i = 0; i < N; i++) {
-    body.getVertexPosition(i, v).applyMatrix4(W); v.toArray(wv, i * 3);
-    let best = -1, bw = 0;
-    for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
-    dom[i] = best;
-    const e = (j) => new THREE.Vector3().fromArray(wv, j * 3);
-    if (v.x < e(ext[0]).x) ext[0] = i; if (v.x > e(ext[1]).x) ext[1] = i;
-    if (v.y > e(ext[2]).y) ext[2] = i; if (v.z > e(ext[3]).z) ext[3] = i;
-  }
-  // world -> raw geometry space (bind pose: one affine map for the whole mesh)
-  const Wp = ext.map(i => new THREE.Vector3().fromArray(wv, i * 3)), Rp = ext.map(i => new THREE.Vector3().fromBufferAttribute(pos, i));
-  const basis = (P) => new THREE.Matrix4().makeBasis(P[1].clone().sub(P[0]), P[2].clone().sub(P[0]), P[3].clone().sub(P[0]));
-  const toRaw = basis(Rp).multiply(basis(Wp).invert());
-  const raw = (w) => w.clone().sub(Wp[0]).applyMatrix4(toRaw).add(Rp[0]);
-
-  const B = (n) => wp(s.getObjectByName("mixamorig" + n));
-  const hips = B("Hips"), sp = B("Spine"), sp1 = B("Spine1"), sp2 = B("Spine2"), neck = B("Neck");
-  const arm = { L: { a: B("LeftArm"), b: B("LeftForeArm") }, R: { a: B("RightArm"), b: B("RightForeArm") } };
-  let minY = Infinity, maxY = -Infinity; for (let i = 0; i < N; i++) { minY = Math.min(minY, wv[i * 3 + 1]); maxY = Math.max(maxY, wv[i * 3 + 1]); }
-  const hs = (maxY - minY) / 1.75;                          // body scale relative to a 1.75 m person
-  const xc = sp1.x, zc = sp1.z;
-  const armX = Math.min(Math.abs(arm.L.a.x - xc), Math.abs(arm.R.a.x - xc));
-  const hemY = hips.y - 0.1 * hs, shoulderY = Math.max(arm.L.a.y, arm.R.a.y) + 0.025 * hs, neckY = neck.y - 0.01 * hs;
-  const armpitY = Math.min(arm.L.a.y, arm.R.a.y) - 0.09 * hs;
-
-  // 1) measure the torso: max radius per height row and direction (0 = front)
-  const NA = 64, NH = 40, prof = Array.from({ length: NH + 1 }, () => new Float32Array(NA));
-  const torso = new Set(["Hips", "Spine", "Spine1", "Spine2", "LeftShoulder", "RightShoulder"].map(boneIdx));
-  for (let i = 0; i < N; i++) {
-    if (!torso.has(dom[i])) continue;
-    const x = wv[i * 3] - xc, y = wv[i * 3 + 1], z = wv[i * 3 + 2] - zc;
-    if (y < hemY - 0.03 || y > shoulderY + 0.02 || Math.abs(x) > armX * 0.95) continue;
-    const row = Math.round((y - hemY) / (shoulderY - hemY) * NH);
-    if (row < 0 || row > NH) continue;
-    const sec = ((Math.floor((Math.atan2(x, z) / (2 * Math.PI) + 1) * NA)) % NA + NA) % NA;
-    prof[row][sec] = Math.max(prof[row][sec], Math.hypot(x, z));
-  }
-  for (const r of prof) {                                    // fill empty directions, then smooth around
-    if (!r.some(x => x > 0)) continue;
-    for (let a = 0; a < NA; a++) if (!r[a]) { for (let d = 1; d < NA; d++) { const q = r[(a + d) % NA] || r[(a - d + NA) % NA]; if (q) { r[a] = q; break; } } }
-    for (let p = 0; p < 3; p++) { const c = r.slice(); for (let a = 0; a < NA; a++) r[a] = (c[(a + NA - 1) % NA] + 2 * c[a] + c[(a + 1) % NA]) / 4; }
-  }
-  for (let h = 0; h <= NH; h++) if (!prof[h].some(x => x > 0)) {   // rows without data: copy the nearest row
-    for (let d = 1; d <= NH; d++) { const q = prof[h - d] || prof[h + d]; if (q && q.some(x => x > 0)) { prof[h].set(q); break; } }
-  }
-  const rowY = (h) => hemY + (shoulderY - hemY) * h / NH;
-  // 2) shirt radius: body + ease; below the bust: straight fall + flare + soft folds
-  const S = prof.map(r => r.map(x => x + 0.022 * hs));
-  let bust = NH; { let best = 0; for (let h = 0; h <= NH; h++) { const y = rowY(h); if (y > armpitY - 0.2 * hs && y < armpitY && S[h][0] > best) { best = S[h][0]; bust = h; } } }
-  const bustY = rowY(bust);
-  for (let h = 0; h < bust; h++) {
-    const fl = (bustY - rowY(h)) / (bustY - hemY);
-    for (let a = 0; a < NA; a++) {
-      const ang = a / NA * 2 * Math.PI;
-      S[h][a] = Math.max(S[h][a], S[bust][a] * (1 + 0.035 * fl)) + 0.0045 * hs * fl ** 1.3 * (Math.sin(7 * ang + 1.7) + 0.6 * Math.sin(12 * ang + 0.4 + rowY(h) * 9));
-    }
-  }
-  for (let p = 0; p < 2; p++) for (let h = 1; h < NH; h++) for (let a = 0; a < NA; a++) S[h][a] = (S[h - 1][a] + 2 * S[h][a] + S[h + 1][a]) / 4;
-
-  // 3) rings from hem to neck (top: shoulder slope into a crew neck, lower in front)
-  const rings = [];
-  for (let h = 0; h <= NH; h++) rings.push(Array.from({ length: NA }, (_, a) => ({ r: S[h][a], y: rowY(h) })));
-  const K = 9;
-  for (let k = 1; k <= K; k++) {
-    const t = k / K, e = 1 - (1 - t) ** 2;
-    rings.push(Array.from({ length: NA }, (_, a) => {
-      const ang = a / NA * 2 * Math.PI, ca = Math.cos(ang), sa = Math.sin(ang);
-      const rn = 1 / Math.sqrt((sa / (0.078 * hs)) ** 2 + (ca / (0.07 * hs)) ** 2);
-      const yn = neckY - 0.035 * hs * Math.max(0, ca) ** 2;
-      return { r: THREE.MathUtils.lerp(S[NH][a], rn, t ** 1.2), y: THREE.MathUtils.lerp(shoulderY, yn, e) };
-    }));
-  }
-  const topY = neckY, vOf = (y) => (y - hemY) / (topY - hemY);
-
-  const P = [], UV = [], C = [], SI = [], SW = [], IDX = [];
-  const segBones = [["Hips", hips.y], ["Spine", sp.y], ["Spine1", sp1.y], ["Spine2", sp2.y]].map(([n, y]) => [boneIdx(n), y]);
-  const sideOf = (x) => (Math.sign(x) === Math.sign(arm.L.a.x - xc) ? "Left" : "Right");
-  const pushVertex = (w, uv, rib, weights) => {
-    raw(w).toArray(P, P.length); UV.push(uv[0], uv[1]); C.push(rib, rib, rib);
-    const ws = weights.filter(([b]) => b >= 0).sort((p, q) => q[1] - p[1]).slice(0, 4);
-    const sum = ws.reduce((t, [, x]) => t + x, 0) || 1;
-    for (let k = 0; k < 4; k++) { SI.push(ws[k] ? ws[k][0] : 0); SW.push(ws[k] ? ws[k][1] / sum : 0); }
-  };
-  const torsoWeights = (x, y) => {
-    let w = [];
-    if (y <= segBones[0][1]) w = [[segBones[0][0], 1]];
-    else if (y >= segBones[3][1]) w = [[segBones[3][0], 1]];
-    else for (let k = 0; k < 3; k++) { const [b0, y0] = segBones[k], [b1, y1] = segBones[k + 1];
-      if (y >= y0 && y <= y1) { const t = (y - y0) / (y1 - y0); w = [[b0, 1 - t], [b1, t]]; } }
-    const ws = smooth(armX * 0.45, armX, Math.abs(x)) * smooth(armpitY, shoulderY, y) * 0.6;
-    const wn = smooth(shoulderY, neckY, y) * 0.3;
-    w = w.map(([b, x2]) => [b, x2 * (1 - ws - wn)]);
-    w.push([boneIdx(sideOf(x) + "Shoulder"), ws], [boneIdx("Neck"), wn]);
-    return w;
-  };
-  // torso grid
-  const cols = NA + 1;
-  rings.forEach((ring, h) => {
-    for (let a = 0; a <= NA; a++) {
-      const ang = a / NA * 2 * Math.PI - Math.PI;                              // a=NA/2 -> front
-      const ia = (a + NA / 2) % NA, rr = ring[ia].r, yy = ring[ia].y;          // ring data is indexed from the front
-      const x = xc + Math.sin(ang) * rr, z = zc + Math.cos(ang) * rr;
-      const rib = (yy < hemY + 0.022 * hs || h >= rings.length - 2) ? TEE_HEM : 1;
-      pushVertex(new THREE.Vector3(x, yy, z), [a / NA, vOf(yy)], rib, torsoWeights(x - xc, yy));
-    }
-  });
-  for (let h = 0; h < rings.length - 1; h++) for (let a = 0; a < NA; a++) {
-    const i0 = h * cols + a, i1 = i0 + 1, i2 = i0 + cols, i3 = i2 + 1;
-    IDX.push(i0, i2, i1, i1, i2, i3);
-  }
-  // sleeves
-  for (const side of ["L", "R"]) {
-    const { a, b } = arm[side], dir = b.clone().sub(a), L = dir.length(); dir.normalize();
-    let rArm = 0;
-    for (let i = 0; i < N; i++) {
-      v.fromArray(wv, i * 3).sub(a); const t = v.dot(dir);
-      if (t < 0.15 * L || t > 0.5 * L) continue;
-      const perp = v.clone().addScaledVector(dir, -t).length();
-      if (perp < 0.12 * hs) rArm = Math.max(rArm, perp);
-    }
-    rArm = rArm || 0.045 * hs;
-    const rStart = Math.max(rArm * 1.8, rArm + 0.04 * hs), rEnd = rArm + 0.028 * hs;
-    const u = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 0, 1)).normalize(), w2 = new THREE.Vector3().crossVectors(dir, u).normalize();
-    const NS = 12, NC = 32, base = P.length / 3, s0 = -rStart * 0.6, s1 = 0.48 * L;
-    const shoulderBone = boneIdx((side === "L" ? "Left" : "Right") + "Shoulder"), armBone = boneIdx((side === "L" ? "Left" : "Right") + "Arm");
-    for (let k = 0; k <= NS; k++) {
-      const t = k / NS, sAlong = THREE.MathUtils.lerp(s0, s1, t), rad = THREE.MathUtils.lerp(rStart, rEnd, smooth(0, 1, t * 1.3));
-      const wArm = smooth(s0, 0.12 * L, sAlong);
-      for (let c = 0; c <= NC; c++) {
-        const ang = c / NC * 2 * Math.PI, rr = rad * (1 + 0.04 * Math.sin(5 * ang + side.length) * t);
-        const p = a.clone().addScaledVector(dir, sAlong).addScaledVector(u, Math.cos(ang) * rr).addScaledVector(w2, Math.sin(ang) * rr);
-        pushVertex(p, [0.02, 0.35], t > 0.88 ? TEE_HEM : 1, [[armBone, wArm], [shoulderBone, (1 - wArm) * 0.5], [segBones[3][0], (1 - wArm) * 0.5]]);
-      }
-    }
-    for (let k = 0; k < NS; k++) for (let c = 0; c < NC; c++) {
-      const i0 = base + k * (NC + 1) + c, i1 = i0 + 1, i2 = i0 + NC + 1, i3 = i2 + 1;
-      IDX.push(i0, i1, i2, i1, i3, i2);
-    }
-  }
-  const tg = new THREE.BufferGeometry();
-  tg.setAttribute("position", new THREE.Float32BufferAttribute(P, 3));
-  tg.setAttribute("uv", new THREE.Float32BufferAttribute(UV, 2));
-  tg.setAttribute("color", new THREE.Float32BufferAttribute(C, 3));
-  tg.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(SI, 4));
-  tg.setAttribute("skinWeight", new THREE.Float32BufferAttribute(SW, 4));
-  tg.setIndex(IDX); tg.computeVertexNormals();
-  const tee = new THREE.SkinnedMesh(tg, teeMaterial(0xffffff));
-  tee.name = "teeBody"; tee.castShadow = true; tee.frustumCulled = false;   // no receiveShadow: avoids shadow-acne stripes
-  tee.position.copy(body.position); tee.quaternion.copy(body.quaternion); tee.scale.copy(body.scale);
-  body.parent.add(tee); tee.bind(body.skeleton, body.bindMatrix);
-
-  // print layout in the unrolled texture: centred on the upper chest
-  const size = 0.27 * hs;
-  // centre on the upper chest, but keep the logo (top third of the print) below the shoulder slope
-  const printY = Math.min(bustY * 0.65 + shoulderY * 0.35, shoulderY - 0.05 * hs - 0.36 * size);
-  const pr = Math.max(0, Math.min(NH, Math.round((printY - hemY) / (shoulderY - hemY) * NH)));
-  let circ = 0; for (let a = 0; a < NA; a++) { const r0 = S[pr][a], r1 = S[pr][(a + 1) % NA]; circ += Math.hypot(r1 - r0, r0 * 2 * Math.PI / NA); }
-  shirtLayout = { u: 0.5, v: vOf(printY), w: size / circ, h: size / (topY - hemY) };
-}
-
-/** Shirt material per colorway: unrolled fabric texture (color + fine knit + print), cloth sheen. */
-const shirtTextures = {};
-function shirtMaterial(hex, light) {
-  const key = hex + light;
-  if (!shirtTextures[key]) {
-    const c = document.createElement("canvas"); c.width = 2048; c.height = 1024;
-    const g = c.getContext("2d");
-    g.fillStyle = hex; g.fillRect(0, 0, c.width, c.height);
-    g.globalAlpha = light ? 0.04 : 0.025; g.strokeStyle = light ? "#000" : "#fff"; g.lineWidth = 1;  // fine knit
-    for (let x = 0; x < c.width; x += 3) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, c.height); g.stroke(); }
-    g.globalAlpha = 1;
-    if (shirtLayout) {
-      const L = shirtLayout, img = PRINT_MATS[light ? 1 : 0].map.image;
-      const w = L.w * c.width, h = L.h * c.height, cx = L.u * c.width, cy = (1 - L.v) * c.height;
-      g.drawImage(img, cx - w / 2, cy - h / 2, w, h);
-    }
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-    shirtTextures[key] = t;
-  }
-  return new THREE.MeshPhysicalMaterial({ map: shirtTextures[key], vertexColors: true, roughness: 0.9, metalness: 0,
-    sheen: 0.22, sheenRoughness: 0.85, sheenColor: new THREE.Color(hex), side: THREE.DoubleSide });
-}
-
-/**
- * Retarget a clip between two Mixamo rigs (same bone names, different rest orientations):
- * per frame and bone, the source's world rotation relative to its rest pose is applied to the
- * target's rest pose. Rest poses: source as loaded, target in `targetRest` (its T-pose clip).
- */
-function retargetClip(src, clip, dst, targetRest, name) {
-  const ss = src.scene, ds = dst.scene;
-  const restMixer = new THREE.AnimationMixer(ds);
-  const saved = []; ds.traverse(o => { if (o.isBone) saved.push([o, o.quaternion.clone(), o.position.clone()]); });
-  if (targetRest) { restMixer.clipAction(targetRest).play(); restMixer.setTime(0); }
-  ss.updateMatrixWorld(true); ds.updateMatrixWorld(true);
-  const pairs = [];
-  ds.traverse(o => { if (!o.isBone) return; const m = ss.getObjectByName(o.name); if (!m) return;
-    pairs.push({ x: o, m, restM: m.getWorldQuaternion(new THREE.Quaternion()).invert(), restX: o.getWorldQuaternion(new THREE.Quaternion()) }); });
-  restMixer.stopAllAction();
-  const hips = pairs.find(p => p.x.name === "mixamorigHips");
-  const restHipsM = wp(hips.m), restHipsX = wp(hips.x), ratio = restHipsX.y / restHipsM.y;
-  const mixer = new THREE.AnimationMixer(ss); mixer.clipAction(clip).play();
-  const fps = 30, n = Math.floor(clip.duration * fps) + 1, times = new Float32Array(n);
-  const qv = pairs.map(() => new Float32Array(n * 4)), pv = new Float32Array(n * 3);
-  const q = new THREE.Quaternion(), pq = new THREE.Quaternion(), d = new THREE.Vector3();
-  for (let f = 0; f < n; f++) {
-    const t = Math.min(f / fps, clip.duration); times[f] = t;
-    mixer.setTime(t); ss.updateMatrixWorld(true);
-    d.copy(wp(hips.m)).sub(restHipsM).multiplyScalar(ratio).add(restHipsX);
-    hips.x.parent.worldToLocal(d); hips.x.position.copy(d); d.toArray(pv, f * 3);
-    pairs.forEach((p, i) => {
-      p.m.getWorldQuaternion(q).multiply(p.restM).multiply(p.restX);
-      p.x.parent.getWorldQuaternion(pq);
-      p.x.quaternion.copy(pq.invert().multiply(q));
-      p.x.updateWorldMatrix(false, false);
-      p.x.quaternion.toArray(qv[i], f * 4);
-    });
-  }
-  mixer.stopAllAction();
-  saved.forEach(([o, qq, pp]) => { o.quaternion.copy(qq); o.position.copy(pp); });
-  ds.updateMatrixWorld(true);
-  const tracks = pairs.map((p, i) => new THREE.QuaternionKeyframeTrack(p.x.name + ".quaternion", times, qv[i]));
-  tracks.push(new THREE.VectorKeyframeTrack("mixamorigHips.position", times, pv));
-  return new THREE.AnimationClip(name, clip.duration, tracks);
-}
-
-/** body: the model (Michelle, or Xbot if she is missing); anim: Xbot with idle + walk clips. */
-function preparePrototype(body, anim) {
-  const s = body.scene;
-  s.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(s);
-  protoScale = FIG_H / (box.max.y - box.min.y);
-  let skin = null;
-  s.traverse(o => { if (!o.isSkinnedMesh) return; o.castShadow = true; o.frustumCulled = false;
-    if (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) skin = o; });
-  if (skin) buildShirt(skin, s);
-  const find = (g, n) => g?.animations.find(a => a.name === n);
-  if (body === anim) animClips = { Idle: find(anim, "idle"), Walking: find(anim, "walk") };
-  else if (anim) {
-    const tpose = body.animations.find(a => /tpose/i.test(a.name));
-    animClips = { Idle: retargetClip(anim, find(anim, "idle"), body, tpose, "Idle"),
-                  Walking: retargetClip(anim, find(anim, "walk"), body, tpose, "Walking") };
-  }
-  proto = body;
-}
-
-/** Rotate `bone` (in world space) so the bone segment bone->child points along `dir`. */
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion(), _bw = new THREE.Quaternion(), _pw = new THREE.Quaternion();
-function aimBone(bone, child, dir, w) {
-  bone.getWorldPosition(_a); child.getWorldPosition(_b);
-  _q.setFromUnitVectors(_b.sub(_a).normalize(), dir);
-  bone.getWorldQuaternion(_bw); bone.parent.getWorldQuaternion(_pw);
-  const local = _pw.invert().multiply(_q.multiply(_bw));
-  bone.quaternion.slerp(local, w);
-  bone.updateMatrixWorld(true);
-}
-
-function makeHuman(hex, light) {
-  const model = SkeletonUtils.clone(proto.scene);
-  model.scale.setScalar(protoScale);
-  const teeMat = shirtMaterial(hex, light);
-  model.traverse(o => {
-    if (!o.isMesh) return;
-    o.frustumCulled = false;
-    if (o.name === "teeBody") o.material = teeMat;
-  });
-  const root = new THREE.Group(); root.add(model);
-  const mixer = new THREE.AnimationMixer(model);
-  const actions = Object.fromEntries(Object.entries(animClips).filter(([, c]) => c).map(([n, c]) => [n, mixer.clipAction(c)]));
-  // the model just stands (idle) on stage; walking only to come and go
-  const alias = { Jump: "Idle", Wave: "Idle", Dance: "Idle" };
-  // all clips run all the time; we only blend their weights (always summing to 1, so never a T-pose)
-  const weights = {}, targets = {};
-  for (const [k, a] of Object.entries(actions)) { a.play(); weights[k] = targets[k] = k === "Idle" ? 1 : 0; a.setEffectiveWeight(weights[k]); }
-  const armR = model.getObjectByName("mixamorigRightArm"), foreR = model.getObjectByName("mixamorigRightForeArm"),
-        handR = model.getObjectByName("mixamorigRightHand");
-  const dir = new THREE.Vector3(), rq = new THREE.Quaternion();
-  let wave = 0, waveTarget = 0, t = 0;
-  return {
-    root,
-    play(name, ts = 1) {
-      waveTarget = name === "Wave" ? 1 : 0;
-      const key = alias[name] || name; if (!actions[key]) return;
-      for (const k in targets) targets[k] = 0;
-      targets[key] = 1; actions[key].setEffectiveTimeScale(ts);
-    },
-    update(dt) {
-      t += dt;
-      const k = 1 - Math.exp(-dt * 3 / FADE);
-      for (const n in weights) { weights[n] += (targets[n] - weights[n]) * k; actions[n].setEffectiveWeight(weights[n]); }
-      mixer.update(dt);
-      wave += (waveTarget - wave) * (1 - Math.exp(-dt * 7));
-      if (wave > 0.01 && armR && foreR && handR) {          // procedural wave on top of the idle clip
-        root.updateMatrixWorld(true); root.getWorldQuaternion(rq);
-        aimBone(armR, foreR, dir.set(-0.62, 0.72, 0.3).normalize().applyQuaternion(rq), wave);
-        aimBone(foreR, handR, dir.set(-0.15 + Math.sin(t * 9) * 0.45, 0.95, 0.2).normalize().applyQuaternion(rq), wave);
-      }
-    },
-    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); teeMat.dispose(); },
-  };
-}
-
-// ---------- figure: procedural fallback (if the model cannot be loaded) ----------
-function makeFallback(hex, light) {
-  const body = new THREE.MeshStandardMaterial({ color: 0x8b949e, roughness: 0.42, metalness: 0.35 });
-  const grey = new THREE.MeshStandardMaterial({ color: 0x9aa3ab, roughness: 0.5 });
-  const tee = teeMaterial(hex);
-  const root = new THREE.Group(), model = new THREE.Group(); root.add(model);
-  const part = (geo, mat, x, y, z, parent) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
-  const limb = (x, y, len, r, mat, parent) => { const p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p);
-    part(new THREE.CapsuleGeometry(r, len, 4, 12), mat, 0, -len / 2 - r, 0, p); return p; };
-  const torso = new THREE.Group(); torso.position.y = 0.95; model.add(torso);
-  part(new THREE.CapsuleGeometry(0.34, 0.42, 6, 18), body, 0, 0.32, 0, torso);
-  part(new THREE.SphereGeometry(0.28, 24, 16), grey, 0, 0.95, 0, torso);
-  const eye = new THREE.MeshBasicMaterial({ color: 0x7cf29a });
-  part(new THREE.SphereGeometry(0.045, 10, 8), eye, 0.1, 0.98, 0.25, torso);
-  part(new THREE.SphereGeometry(0.045, 10, 8), eye, -0.1, 0.98, 0.25, torso);
-  const teeGeo = new THREE.CylinderGeometry(0.38, 0.42, 0.7, 28, 6, true); ribColors(teeGeo, y => y < -0.29);
-  part(teeGeo, tee, 0, 0.3, 0, torso);
-  const pr = part(printGeometry(0.44, 0.9), printMat(light), 0, 0.34, 0.405, torso); pr.castShadow = false;
-  const armL = limb(0.45, 0.6, 0.42, 0.085, body, torso), armR = limb(-0.45, 0.6, 0.42, 0.085, body, torso);
-  for (const arm of [armL, armR]) part(sleeveGeometry(0.13, 0.15, 0.26), tee, 0, -0.1, 0, arm);
-  const legL = limb(0.16, 0.95, 0.7, 0.11, grey, model), legR = limb(-0.16, 0.95, 0.7, 0.11, grey, model);
-  let mode = "Idle", t = 0;
-  return {
-    root,
-    play(name) { if (name !== mode) { mode = name; t = 0; } },
-    update(dt) {
-      t += dt;
-      for (const o of [armL, armR, legL, legR, torso]) o.rotation.set(0, 0, 0);
-      torso.position.y = 0.95;
-      const s = Math.sin(t * 6.5);
-      if (mode === "Walking" || mode === "Jump") {
-        legL.rotation.x = s * 0.6; legR.rotation.x = -s * 0.6; armL.rotation.x = -s * 0.5; armR.rotation.x = s * 0.5;
-        torso.position.y += Math.abs(Math.cos(t * 6.5)) * 0.04;
-      } else if (mode === "Dance") {
-        torso.rotation.z = Math.sin(t * 4) * 0.15; torso.position.y += Math.abs(Math.sin(t * 4)) * 0.08;
-        armL.rotation.z = 2.4 + Math.sin(t * 8) * 0.4; armR.rotation.z = -2.4 + Math.sin(t * 8 + 1) * 0.4;
-        legL.rotation.z = Math.sin(t * 4) * 0.12; legR.rotation.z = Math.sin(t * 4) * 0.12;
-      } else if (mode === "Wave") {
-        armR.rotation.z = -2.6 + Math.sin(t * 10) * 0.35; torso.position.y += Math.sin(t * 2) * 0.015;
-      } else {
-        torso.position.y += Math.sin(t * 2) * 0.015; armL.rotation.z = 0.08; armR.rotation.z = -0.08;
-      }
-    },
-    dispose() { tee.dispose(); },
-  };
-}
-const makeFigure = (hex, light) => proto ? makeHuman(hex, light) : makeFallback(hex, light);
-
-// ---------- actors on stage ----------
+// ---------- shirts on stage ----------
 const actors = [];
 let current = null;
-const ease = (k) => 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;   // easeOutBack
-const yawTo = (from, to, k) => { let d = to - from; d = Math.atan2(Math.sin(d), Math.cos(d)); return from + d * k; };
-const raycaster = new THREE.Raycaster(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+let turn = -0.35;                      // turntable angle of the shirt on display
+let dragging = false, lastDrag = -10;
+const easeOut = (k) => 1 - (1 - k) ** 3, easeIn = (k) => k ** 3;
+const easeBack = (k) => 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;
+const raycaster = new THREE.Raycaster(), cardPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -1.6);
 
-/** Floor point "under" a DOM element (the colorway card), so figures step out of their card. */
-function floorPointFor(el) {
+/** Point in front of the stage "behind" a DOM element (the colorway card): shirts fly out of their card. */
+function cardPoint(el) {
   const r = el.getBoundingClientRect(), c = renderer.domElement.getBoundingClientRect();
   const ndc = new THREE.Vector2(((r.left + r.width / 2 - c.left) / c.width) * 2 - 1,
-                               -((r.top + r.height * 0.35 - c.top) / c.height) * 2 + 1);
+                               -((r.top + r.height * 0.4 - c.top) / c.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const p = new THREE.Vector3();
-  if (!raycaster.ray.intersectPlane(groundPlane, p)) p.set(0, 0, 3);
-  p.x = THREE.MathUtils.clamp(p.x, -4.2, 4.2); p.z = THREE.MathUtils.clamp(p.z, 0.8, 3.4);
+  if (!raycaster.ray.intersectPlane(cardPlane, p)) p.set(0, 0.3, 1.6);
+  p.x = THREE.MathUtils.clamp(p.x, -3, 3); p.y = THREE.MathUtils.clamp(p.y, -0.5, 1);
   return p;
 }
-
-function spawn(cardEl) {
-  const light = cardEl.dataset.light === "1";
-  const fig = makeFigure(cardEl.dataset.c, light);
-  const from = floorPointFor(cardEl);
-  fig.root.position.copy(from);
-  fig.root.rotation.y = 0;                 // faces the camera (shirt to the front)
-  fig.root.scale.setScalar(0.12);
-  fig.play("Jump");
-  scene.add(fig.root);
-  const a = { fig, mode: "spawn", t: 0, name: cardEl.dataset.n, exit: null };
-  actors.push(a);
-  return a;
-}
-function leave(a, side) {
-  a.exit = new THREE.Vector3(side * 7.5, 0, 0.6);    // off to the side, so we see the profile, not the back
-  if (a.mode === "dance" || a.mode === "turn") { a.mode = "wave"; a.t = 0; a.fig.play("Wave"); }
-  else if (a.mode !== "walkOut" && a.mode !== "wave") { a.mode = "walkOut"; a.fig.play("Walking", EXIT_TIMESCALE); }
-}
-let lastSide = 1;
 function select(cardEl) {
-  const next = spawn(cardEl);
+  const s = makeShirt(cardEl.dataset.c, cardEl.dataset.light === "1");
+  const from = cardPoint(cardEl);
+  s.root.position.copy(from); s.root.scale.setScalar(0.15);
+  scene.add(s.root);
+  const a = { s, mode: "in", t: 0, from, name: cardEl.dataset.n };
   if (current) {
-    // leave towards the side away from the new figure
-    const side = Math.abs(next.fig.root.position.x) > 0.3 ? -Math.sign(next.fig.root.position.x) : (lastSide = -lastSide);
-    leave(current, side);
+    const side = from.x > 0.2 ? -1 : from.x < -0.2 ? 1 : (Math.random() < 0.5 ? -1 : 1);
+    Object.assign(current, { mode: "out", t: 0, from: current.s.root.position.clone(), yaw0: current.s.root.rotation.y,
+      to: new THREE.Vector3(side * 5.5, SHIRT_Y + 0.5, -1.5), side });
   }
-  current = next;
+  actors.push(a); current = a;
 }
-/** Move towards target. backwards=true: walk backwards (facing away from the direction of travel). */
-function walkTowards(a, target, speed, dt, backwards = false) {
-  const p = a.fig.root.position, d = new THREE.Vector3().subVectors(target, p); d.y = 0;
-  const dist = d.length(), step = speed * dt, s = backwards ? -1 : 1;
-  if (dist > 1e-3) a.fig.root.rotation.y = yawTo(a.fig.root.rotation.y, Math.atan2(s * d.x, s * d.z), 1 - Math.exp(-dt * 8));
-  if (dist <= step) { p.copy(target); return true; }
-  p.addScaledVector(d.normalize(), step); return false;
-}
-function updateActors(dt) {
+function updateActors(dt, time) {
+  // idle: swing gently around the front (print stays visible); after a drag, ease back
+  if (!dragging && time - lastDrag > 2.5) {
+    const goal = -0.3 + 0.45 * Math.sin(time * AUTO_SPIN);
+    const d = Math.atan2(Math.sin(goal - turn), Math.cos(goal - turn));
+    turn += d * (1 - Math.exp(-dt * 1.5));
+  }
   for (let i = actors.length - 1; i >= 0; i--) {
-    const a = actors[i], r = a.fig.root;
-    a.fig.update(dt); a.t += dt;
-    switch (a.mode) {
-      case "spawn": {
-        const k = Math.min(1, a.t / SPAWN_S);
-        r.scale.setScalar(0.12 + 0.88 * ease(k));
-        r.position.y = Math.sin(k * Math.PI) * 0.18;
-        // moonwalk to the center: walk clip played backwards, front (and shirt) towards the camera
-        if (k >= 1) { r.position.y = 0; r.scale.setScalar(1); a.mode = "walkIn"; a.fig.play("Walking", -1); }
-        break;
-      }
-      case "walkIn":
-        if (walkTowards(a, CENTER, WALK_SPEED, dt, true)) { a.mode = "turn"; a.t = 0; a.fig.play("Idle"); }
-        break;
-      case "turn":
-        r.rotation.y = yawTo(r.rotation.y, 0, 1 - Math.exp(-dt * 7));
-        if (Math.abs(Math.atan2(Math.sin(r.rotation.y), Math.cos(r.rotation.y))) < 0.04 || a.t > 1) {
-          a.mode = "dance"; a.t = 0; a.fig.play("Dance"); $("nowName").textContent = a.name;
-        }
-        break;
-      case "dance":                                       // on stage: stand, turn a little from side to side
-        r.rotation.y = 0.14 * Math.sin(a.t * 0.45) + 0.05 * Math.sin(a.t * 1.1);
-        break;
-      case "wave":
-        r.rotation.y = yawTo(r.rotation.y, 0, 1 - Math.exp(-dt * 6));
-        if (a.t > WAVE_S) { a.mode = "walkOut"; a.fig.play("Walking", EXIT_TIMESCALE); }
-        break;
-      case "walkOut":
-        if (walkTowards(a, a.exit, WALK_SPEED * EXIT_TIMESCALE, dt)) {
-          scene.remove(r); a.fig.dispose(); actors.splice(i, 1);
-        }
-        break;
+    const a = actors[i], r = a.s.root;
+    a.t += dt;
+    if (a.mode === "in") {
+      const k = Math.min(1, a.t / FLY_IN_S), e = easeOut(k);
+      r.position.lerpVectors(a.from, CENTER, e); r.position.y += Math.sin(k * Math.PI) * 0.35;
+      r.scale.setScalar(0.15 + 0.85 * easeBack(k));
+      r.rotation.y = turn - (1 - e) * Math.PI * 2;
+      if (k >= 1) { a.mode = "show"; a.t = 0; $("nowName").textContent = a.name; }
+    } else if (a.mode === "show") {
+      r.position.set(0, SHIRT_Y + Math.sin(time * 1.2) * 0.05, 0);
+      r.rotation.y = turn; r.rotation.z = Math.sin(time * 0.8) * 0.02;
+    } else if (a.mode === "out") {
+      const k = Math.min(1, a.t / FLY_OUT_S), e = easeIn(k);
+      r.position.lerpVectors(a.from, a.to, e);
+      r.scale.setScalar(1 - 0.6 * e);
+      r.rotation.y = a.yaw0 + a.side * e * Math.PI * 2;
+      if (k >= 1) { scene.remove(r); a.s.dispose(); actors.splice(i, 1); }
     }
   }
 }
 
-// ---------- camera: soft follow + pointer parallax ----------
+// ---------- drag to rotate ----------
+let lastX = 0;
+renderer.domElement.addEventListener("pointerdown", (e) => { dragging = true; lastX = e.clientX; renderer.domElement.setPointerCapture(e.pointerId); });
+renderer.domElement.addEventListener("pointermove", (e) => { if (!dragging) return; turn += (e.clientX - lastX) * 0.01; lastX = e.clientX; });
+const endDrag = () => { if (dragging) { dragging = false; lastDrag = clock.elapsedTime; } };
+renderer.domElement.addEventListener("pointerup", endDrag);
+renderer.domElement.addEventListener("pointercancel", endDrag);
+
+// ---------- camera: slight pointer parallax ----------
 const pointer = new THREE.Vector2();
 stageEl.addEventListener("pointermove", (e) => {
   const r = stageEl.getBoundingClientRect();
   pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
 });
 stageEl.addEventListener("pointerleave", () => pointer.set(0, 0));
-const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
+const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(0, 1.05, 0);
 function updateCamera(dt, t) {
-  const aspect = camera.aspect;
-  const focus = current ? current.fig.root.position : CENTER;
-  const dancing = current && current.mode === "dance";
-  // wide while figures walk, close-up on the shirt while dancing
-  let dist = dancing ? 3.5 : 7.2;
-  if (aspect < 1.15) dist *= Math.min(dancing ? 1.15 : 1.45, Math.pow(1.15 / aspect, 0.6));   // portrait: step back a bit
-  camGoal.set(Math.sin(t * 0.18) * (dancing ? 0.15 : 0.4) + focus.x * 0.35 + pointer.x * 0.2,
-              (dancing ? 1.45 : 1.6) - pointer.y * 0.15,
-              dist + focus.z * 0.25);
-  lookGoal.set(focus.x * 0.45, dancing ? 1.3 : 1.0, focus.z * 0.3);
-  const k = 1 - Math.exp(-dt * 1.8);
+  let dist = 5.4;
+  if (camera.aspect < 1.15) dist *= Math.min(1.35, Math.pow(1.15 / camera.aspect, 0.6));   // portrait: step back a bit
+  camGoal.set(pointer.x * 0.25, 1.45 - pointer.y * 0.1, dist);
+  const k = 1 - Math.exp(-dt * 2.5);
   camera.position.lerp(camGoal, k); lookAt.lerp(lookGoal, k);
   camera.lookAt(lookAt);
-  spot.target.position.lerp(new THREE.Vector3(focus.x, 0, focus.z), k * 1.5);
-  pool.position.x = spot.target.position.x; pool.position.z = spot.target.position.z;
-  ring.material.opacity = dancing ? 0.35 + 0.2 * Math.sin(t * 7.5) : 0.18;
+  ring.material.opacity = current && current.mode === "show" ? 0.28 + 0.1 * Math.sin(t * 2) : 0.18;
 }
 
 // ---------- sizing / loop ----------
@@ -1145,7 +785,7 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (!visible) return;
-  updateActors(dt); updateCamera(dt, t);
+  updateActors(dt, t); updateCamera(dt, t);
   renderer.render(scene, camera);
 });
 
@@ -1156,13 +796,11 @@ function renderThumbnails() {
   r.setPixelRatio(1); r.setSize(208, 140, false);
   r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
   const s = new THREE.Scene(); addLights(s);
-  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(2, 3, 5); s.add(key);
-  const cam = new THREE.PerspectiveCamera(24, 208 / 140, 0.1, 30);
-  cam.position.set(0, 1.45, 2.7); cam.lookAt(0, 1.35, 0);   // upper body: the shirt fills the card
+  const cam = new THREE.PerspectiveCamera(26, 208 / 140, 0.1, 30);
+  cam.position.set(0, 0, 4.1); cam.lookAt(0, 0, 0);
   document.querySelectorAll("#colors .card").forEach(card => {
-    const f = makeFigure(card.dataset.c, card.dataset.light === "1");
-    f.play("Idle"); f.update(0.6); f.root.rotation.y = -0.3;
-    s.add(f.root); r.render(s, cam);
+    const f = makeShirt(card.dataset.c, card.dataset.light === "1");
+    f.root.rotation.y = -0.3; s.add(f.root); r.render(s, cam);
     const pv = card.querySelector(".pv"); pv.querySelector("img").src = r.domElement.toDataURL("image/png"); pv.classList.add("has-img");
     s.remove(f.root); f.dispose();
   });
@@ -1170,32 +808,12 @@ function renderThumbnails() {
 }
 
 // ---------- boot ----------
-const progress = {};
-async function loadModel(file) {
-  const loader = new GLTFLoader();
-  for (const url of modelUrls(file)) {
-    try {
-      return await loader.loadAsync(url, (e) => {
-        if (!e.total) return;
-        progress[file] = e.loaded / e.total;
-        const p = Object.values(progress), avg = p.reduce((s, v) => s + v, 0) / 2;
-        $("loadBar").style.width = (100 * avg).toFixed(0) + "%";
-      });
-    } catch (e) { console.warn("[stage] model load failed:", url, e?.message || e); }
-  }
-  return null;
-}
-(async () => {
-  const [xbot, michelle] = await Promise.all([loadModel("Xbot.glb"), loadModel("Michelle.glb")]);
-  if (xbot) preparePrototype(michelle || xbot, xbot);      // the model wears the shirt; Xbot provides idle + walk
-  else console.warn("[stage] using procedural fallback figure");
-  renderThumbnails();
-  stageEl.classList.add("ready");
-  window.stageSelect = select;
-  if (new URLSearchParams(location.search).has("debug")) window.__stage = { actors, scene, camera, renderer,
-    tick: (dt) => { updateActors(dt); updateCamera(dt, clock.elapsedTime); } };   // step manually (tests)
-  select(document.querySelector("#colors .card.on") || document.querySelector("#colors .card"));
-})();
+renderThumbnails();
+stageEl.classList.add("ready");
+window.stageSelect = select;
+if (new URLSearchParams(location.search).has("debug")) window.__stage = { actors, scene, camera, renderer,
+  tick: (dt) => { clock.elapsedTime += dt; updateActors(dt, clock.elapsedTime); updateCamera(dt, clock.elapsedTime); } };   // step manually (tests)
+select(document.querySelector("#colors .card.on") || document.querySelector("#colors .card"));
 </script>
 
 </body>
