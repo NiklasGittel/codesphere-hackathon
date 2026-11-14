@@ -30,6 +30,7 @@ Modes
           used as demo fallback if Gemini fails (AGENT_FALLBACK_TO_MOCK).
 """
 
+import concurrent.futures
 import json
 import logging
 import time
@@ -43,7 +44,7 @@ log = logging.getLogger("agent")
 # Last proposed action, waiting for human approval
 pending_action: dict | None = None
 
-SYSTEM_PROMPT = """You are "Gemini On-Call", an AI Site Reliability Engineer.
+SYSTEM_PROMPT = """You are "Stratus", an AI Site Reliability Engineer powered by Gemini.
 You investigate production incidents of an e-commerce shop (Tech Europe Merch).
 
 Rules:
@@ -164,19 +165,35 @@ def approve(action_id: str | None = None) -> dict:
 
 
 # ------------------------------------------------------------------ gemini
+# Model calls run in a worker thread so we can enforce a hard wall-clock limit,
+# independent of SDK retries or a hanging connection.
+_gemini_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="gemini")
+
+
 def _investigate_gemini(symptom: str):
-    """Real agent loop with Gemini function calling."""
+    """Real agent loop with Gemini function calling. Raises TimeoutError if the model is too slow."""
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
+    client = genai.Client(api_key=config.GEMINI_API_KEY,
+                         http_options=types.HttpOptions(timeout=int(config.GEMINI_CALL_TIMEOUT_S * 1000)))
     tool = types.Tool(function_declarations=[types.FunctionDeclaration(**t) for t in TOOLS])
     cfg = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=[tool], temperature=0.2)
     contents = [types.Content(role="user", parts=[types.Part(text=f"Incident: {symptom}. Find the root cause.")])]
+    deadline = time.monotonic() + config.AGENT_TOTAL_TIMEOUT_S
 
     for step in range(1, config.AGENT_MAX_STEPS + 1):
-        log.info("gemini call step=%s model=%s", step, config.GEMINI_MODEL)
-        resp = client.models.generate_content(model=config.GEMINI_MODEL, contents=contents, config=cfg)
+        limit = min(config.GEMINI_CALL_TIMEOUT_S, deadline - time.monotonic())
+        if limit <= 0:
+            raise TimeoutError(f"Gemini run exceeded {config.AGENT_TOTAL_TIMEOUT_S:g}s")
+        log.info("gemini call step=%s model=%s timeout=%.0fs", step, config.GEMINI_MODEL, limit)
+        fut = _gemini_pool.submit(client.models.generate_content,
+                                  model=config.GEMINI_MODEL, contents=list(contents), config=cfg)
+        try:
+            resp = fut.result(timeout=limit)
+        except concurrent.futures.TimeoutError:
+            fut.cancel()
+            raise TimeoutError(f"Gemini did not answer within {limit:.0f}s (step {step})") from None
         content = resp.candidates[0].content
         contents.append(content)  # keep full content (incl. thought signatures)
         calls = []
@@ -208,7 +225,7 @@ MOCK_SCRIPT = [
     ("Checkout is slow - first I check overall health and recent events.", "get_infra_overview", {}),
     ("Let me see how checkout depends on other services.", "get_service_graph", {}),
     ("Is checkout-service itself overloaded? Checking its metrics.", "query_metrics", {"service": "checkout-service"}),
-    ("CPU and errors look normal - hypothesis 'checkout overloaded' rejected. Checking traces.", "get_traces", {}),
+    ("Errors are timeouts but CPU is normal - checkout is waiting, not overloaded. Checking traces.", "get_traces", {}),
     ("Time is spent waiting for DB connections. Checking postgres.", "query_metrics", {"service": "postgres-db"}),
     ("Pool exhausted. Why so many queries? Checking the cache in front of the DB.", "query_metrics", {"service": "redis-cache"}),
     ("Hit rate collapsed. Confirming with Redis logs.", "query_logs", {"service": "redis-cache"}),
@@ -234,7 +251,7 @@ def _investigate_mock(symptom: str):
                   f"Cache hit rate 95% → {r['hit_rate_percent']:.0f}%",
                   f"Postgres connections {d['active_connections']:.0f}/{d['max_connections']} (pool exhausted)",
                   f"Checkout p95 {c['p95_latency_ms'] / 1000:.1f}s"],
-        "evidence": [f"checkout CPU only {c['cpu_percent']:.0f}% - service itself healthy",
+        "evidence": [f"checkout error rate {c['error_rate_percent']:.0f}% (504 timeouts) but CPU only {c['cpu_percent']:.0f}%",
                      f"traces: most time in postgres pool.acquire (~{c['db_wait_ms'] / 1000:.1f}s)",
                      f"redis used {r['used_memory_gb']:.1f}/{r['memory_gb']:g} GB, policy allkeys-lru"],
         "resource": "redis-cache", "action": "scale_memory", "params": {"memory_gb": target},

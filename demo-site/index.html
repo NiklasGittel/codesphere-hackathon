@@ -4,14 +4,20 @@
 
   Purpose: the customer-facing part of the AI SRE demo. A visitor buys the
   "Ship It" coder shirt. On a normal day checkout takes ~0.3s; during
-  "Black Friday" (incident started in the backend) checkout takes ~10s,
-  until the AI SRE agent fixes the infrastructure.
+  "Black Friday" (incident started in the backend) checkout fails after 3s
+  with a 504, until the AI SRE agent fixes the infrastructure.
+
+  Product stage: a 3D studio (Three.js). Each colorway in the bar at the
+  bottom of the stage is a robot model wearing that shirt color. Picking a
+  colorway: the current model waves and walks off, the new one steps out of
+  its card, walks to the center and dances. Model: RobotExpressive from the
+  three.js examples (CC0); if it cannot be loaded, a procedural figure is used.
 
   Backend: POST /api/checkout, POST /api/incident/start, POST /api/reset,
   GET /api/infra/state (see backend/README.md).
   API base: ?api=https://... in the URL, otherwise http://localhost:8080.
   If the backend is unreachable, the shop falls back to a local mock so it
-  still works standalone (MOCK badge in the corner).
+  still works standalone (MOCK badge in the demo panel).
 
   Demo controls: press "D" or click the small gear bottom-right.
 -->
@@ -28,29 +34,71 @@
     --sans: Inter, "Segoe UI", system-ui, sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;
        background-image:radial-gradient(circle at 80% -10%,rgba(124,242,154,.08),transparent 40%),
        linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
        background-size:auto,32px 32px,32px 32px}
   button{font:inherit;cursor:pointer}
-  .bf-banner{display:none;background:var(--bf);color:#fff;text-align:center;font-family:var(--mono);
-       font-weight:700;padding:10px;letter-spacing:.05em;animation:pulse 1.6s infinite}
+  .bf-banner{display:none;background:#0f1a14;color:var(--accent);text-align:center;font-family:var(--mono);
+       font-size:12px;padding:8px;letter-spacing:.08em;border-bottom:1px solid rgba(124,242,154,.2)}
   body.bf .bf-banner{display:block}
-  @keyframes pulse{50%{filter:brightness(1.25)}}
   header{display:flex;align-items:center;justify-content:space-between;padding:20px 40px;border-bottom:1px solid var(--line)}
   .logo{font-family:var(--mono);font-size:20px;font-weight:700}
-  .logo .b{color:var(--accent)} .logo .k{color:var(--accent2)} .logo small{color:var(--muted);font-weight:400;margin-left:8px;font-size:13px}
+  .logo .b{color:var(--accent)} .logo .k{color:var(--accent2)}
   nav{display:flex;gap:28px;color:var(--muted);font-size:14px}
   .cart-btn{background:none;border:1px solid var(--line);color:var(--text);padding:8px 14px;border-radius:8px;font-family:var(--mono)}
   .cart-btn b{color:var(--accent)}
-  main{max-width:1180px;margin:0 auto;padding:48px 40px;display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:start}
-  .stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:36px;position:relative;overflow:hidden}
+
+  main{max-width:1380px;margin:0 auto;padding:32px 40px 56px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:44px;align-items:start}
+  main > *{min-width:0}
+
+  /* ---------- 3D stage ---------- */
+  .stage{position:relative;height:clamp(520px,calc(100vh - 150px),780px);border:1px solid var(--line);border-radius:20px;overflow:hidden;
+       background:
+         radial-gradient(ellipse 55% 60% at 50% 0%,rgba(255,255,255,.07),transparent 70%),
+         radial-gradient(ellipse 70% 45% at 50% 100%,rgba(124,242,154,.06),transparent 70%),
+         linear-gradient(#0e1216,#0b0d10 70%)}
+  #scene3d{position:absolute;inset:0}
+  #scene3d canvas{display:block;width:100%;height:100%}
   .stage .tag{position:absolute;top:18px;left:18px;font-family:var(--mono);font-size:12px;color:var(--accent);
-       border:1px solid rgba(124,242,154,.35);padding:4px 8px;border-radius:6px}
-  .stage svg{width:100%;height:auto;display:block;filter:drop-shadow(0 30px 40px rgba(0,0,0,.55))}
-  .term{margin-top:18px;font-family:var(--mono);font-size:13px;color:var(--muted);background:#090b0e;border:1px solid var(--line);
-       border-radius:10px;padding:14px 16px;line-height:1.7}
-  .term .p{color:var(--accent)} .term .c{color:var(--accent2)}
+       border:1px solid rgba(124,242,154,.35);padding:4px 8px;border-radius:6px;background:rgba(11,13,16,.6);z-index:2}
+  .now{position:absolute;top:18px;right:18px;font-family:var(--mono);font-size:12px;color:var(--muted);z-index:2;
+       display:flex;align-items:center;gap:8px;background:rgba(11,13,16,.6);padding:4px 8px;border-radius:6px}
+  .now b{color:var(--text);font-weight:600}
+  .now .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1.2s steps(2) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .load{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);font-family:var(--mono);font-size:13px;color:var(--muted);z-index:2;
+       text-align:center;transition:opacity .4s}
+  .load .bar{width:180px;height:3px;background:var(--line);border-radius:2px;margin:10px auto 0;overflow:hidden}
+  .load .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+  .stage.ready .load{opacity:0;pointer-events:none}
+  #shirt{display:none;position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:min(56%,380px);height:auto;
+       filter:drop-shadow(0 30px 40px rgba(0,0,0,.55))}
+  .stage.no3d #shirt{display:block} .stage.no3d .load{display:none}
+
+  /* product bar with colorways */
+  .rail{position:absolute;left:0;right:0;bottom:0;z-index:3;overflow-x:auto;scrollbar-width:none;padding:28px 16px 16px;
+       background:linear-gradient(transparent,rgba(11,13,16,.85) 55%)}
+  .rail::-webkit-scrollbar{display:none}
+  .rail-in{display:flex;gap:10px;width:max-content;margin:0 auto}
+  .card{width:104px;flex-shrink:0;padding:7px 7px 8px;border:1px solid var(--line);border-radius:12px;background:rgba(14,18,22,.82);
+       backdrop-filter:blur(8px);color:var(--text);font-family:var(--mono);font-size:11px;text-align:left;position:relative;
+       transition:transform .2s,border-color .2s,box-shadow .2s}
+  .card:hover{transform:translateY(-3px);border-color:#34404b}
+  .card.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,242,154,.12);transform:translateY(-5px)}
+  .card .pv{display:grid;place-items:center;height:70px;border-radius:8px;margin-bottom:7px;overflow:hidden;position:relative;
+       background:radial-gradient(circle at 50% 65%,color-mix(in srgb,var(--c) 70%,transparent),transparent 72%),#090b0e}
+  .card .pv svg{width:40px;height:40px}
+  .card .pv img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .3s}
+  .card .pv.has-img img{opacity:1} .card .pv.has-img svg{display:none}
+  .card .nm{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .hx{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+  .card.on .nm{color:var(--accent)}
+  .card.emit .pv::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent,rgba(124,242,154,.55));animation:emit .7s ease-out forwards}
+  @keyframes emit{from{opacity:1;transform:translateY(40%)}to{opacity:0;transform:translateY(-60%)}}
+
+  /* ---------- product info ---------- */
+  .info{position:sticky;top:24px}
   .crumbs{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:14px}
   h1{font-size:42px;line-height:1.05;letter-spacing:-.02em}
   h1 code{font-family:var(--mono);color:var(--accent)}
@@ -58,14 +106,15 @@
   .price{display:flex;align-items:baseline;gap:12px;margin-bottom:26px;font-family:var(--mono)}
   .price .now{font-size:30px;font-weight:700}
   .price .old{color:var(--muted);text-decoration:line-through;display:none}
-  .price .off{display:none;background:var(--bf);color:#fff;font-size:12px;padding:3px 8px;border-radius:5px}
+  .price .off{display:none;border:1px solid rgba(124,242,154,.4);color:var(--accent);font-size:12px;padding:3px 8px;border-radius:5px}
   body.bf .price .old, body.bf .price .off{display:inline-block}
   .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:var(--mono)}
+  .label b{color:var(--text);text-transform:none;letter-spacing:0;font-weight:600}
+  .pick{display:flex;align-items:center;gap:10px;margin-bottom:24px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .pick .sw{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;transition:background .3s}
   .opts{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap}
   .opt{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:9px;font-family:var(--mono);min-width:54px}
   .opt.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px rgba(124,242,154,.12)}
-  .swatch{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);padding:0;min-width:0}
-  .swatch.on{border-color:var(--accent)}
   .row{display:flex;gap:12px;align-items:center}
   .qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .qty button{background:var(--panel);border:0;color:var(--text);width:40px;height:48px;font-size:18px}
@@ -73,7 +122,10 @@
   .primary{flex:1;height:50px;border:0;border-radius:10px;background:var(--accent);color:#06210f;font-weight:700;font-size:15px;
        transition:transform .1s}
   .primary:active{transform:scale(.98)} .primary:disabled{opacity:.5;cursor:default}
-  .feats{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;color:var(--muted)}
+  .term{margin-top:22px;font-family:var(--mono);font-size:13px;color:var(--muted);background:#090b0e;border:1px solid var(--line);
+       border-radius:10px;padding:14px 16px;line-height:1.7}
+  .term .p{color:var(--accent)} .term .c{color:var(--accent2)}
+  .feats{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;color:var(--muted)}
   .feats div{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:rgba(18,22,27,.6)}
   .feats b{color:var(--text);display:block;margin-bottom:3px;font-family:var(--mono);font-size:13px}
   /* drawer */
@@ -97,14 +149,28 @@
   .modal{position:fixed;inset:0;display:none;place-items:center;z-index:20;background:rgba(0,0,0,.7)}
   .modal.on{display:grid}
   .box{width:440px;max-width:92vw;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;text-align:center}
-  .spinner{width:56px;height:56px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--accent);margin:0 auto 20px;animation:spin .8s linear infinite}
+  .spinner{width:72px;height:72px;border-radius:50%;border:5px solid var(--line);border-top-color:var(--accent);margin:0 auto 20px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .timer{font-family:var(--mono);font-size:34px;font-weight:700;margin:6px 0}
-  .timer.slow{color:var(--warn)} .timer.bad{color:var(--bad)}
   .hint{color:var(--muted);font-size:14px;min-height:20px;font-family:var(--mono)}
-  .hint.warn{color:var(--warn)}
   .ok{font-size:46px} .order{font-family:var(--mono);color:var(--accent);margin:8px 0 18px}
   .ghost{background:none;border:1px solid var(--line);color:var(--text);padding:10px 18px;border-radius:9px;margin-top:16px}
+  .err-icon{width:64px;height:64px;border-radius:50%;margin:0 auto 16px;display:grid;place-items:center;font-size:34px;font-weight:800;
+       color:var(--bad);border:3px solid var(--bad);background:rgba(255,93,108,.08)}
+  .err-code{font-family:var(--mono);color:var(--bad);margin:8px 0 14px;font-size:14px}
+  .req{font-family:var(--mono);color:var(--muted);font-size:11px;margin-top:12px;opacity:.7}
+  .err-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
+  .err-actions .primary{flex:0 0 auto;padding:0 22px;height:42px}
+  .err-actions .ghost{margin-top:0}
+  .shake{animation:shake .45s}
+  @keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+  /* ---- Black Friday look (subtle) ---- */
+  .bf-kicker{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.12em;margin-bottom:14px;display:inline-flex;
+       align-items:center;gap:8px}
+  .bf-kicker::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  body:not(.bf) .bf-kicker{display:none}
+  .bf-info{display:none;gap:18px;margin:-10px 0 26px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  body.bf .bf-info{display:flex}
+  .bf-info b{color:var(--text);font-weight:600}
   canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:30}
   /* demo controls */
   .demo-toggle{position:fixed;right:16px;bottom:16px;width:38px;height:38px;border-radius:50%;background:var(--panel);
@@ -118,54 +184,66 @@
   .demo .api{color:var(--muted);margin-top:10px;word-break:break-all}
   .mode{padding:2px 6px;border-radius:4px;font-size:10px}
   .mode.live{background:rgba(124,242,154,.15);color:var(--accent)} .mode.mock{background:rgba(255,204,77,.15);color:var(--warn)}
-  @media(max-width:900px){main{grid-template-columns:1fr;padding:24px} nav{display:none} header{padding:16px 20px}}
+  @media(max-width:980px){
+    main{grid-template-columns:1fr;padding:16px 16px 48px;gap:28px}
+    nav{display:none} header{padding:14px 16px}
+    .stage{height:clamp(440px,68vh,620px)}
+    .info{position:static}
+    h1{font-size:34px}
+  }
+  @media(max-width:520px){
+    .card{width:84px} .card .pv{height:58px}
+    .feats{grid-template-columns:1fr}
+    .now{display:none}
+  }
 </style>
 </head>
-<body>
-<div class="bf-banner">⚡ BLACK FRIDAY — 50% OFF EVERYTHING — git checkout -b deals ⚡</div>
+<body class="bf">
+<div class="bf-banner">black friday — 50% off all merch — ends tonight</div>
 
 <header>
-  <div class="logo"><span class="k">{</span>Tech<span class="b">:</span>Europe<span class="k">}</span><small>merch</small></div>
+  <div class="logo"><span class="b">&gt;</span> tech_europe<span class="k">/</span>merch<span class="b">_</span></div>
   <nav><span>Shirts</span><span>Hoodies</span><span>Stickers</span><span>About</span></nav>
-  <button class="cart-btn" id="cartBtn">cart[<b id="cartCount">0</b>]</button>
+  <button class="cart-btn" id="cartBtn" style="display:none">cart[<b id="cartCount">0</b>]</button>
 </header>
 
 <main>
-  <section>
-    <div class="stage">
-      <span class="tag">// new drop</span>
-      <svg id="shirt" viewBox="0 0 400 420" aria-label="Ship It Shirt">
-        <path id="shirtBody" d="M120 30 L160 18 Q200 48 240 18 L280 30 L370 80 L340 150 L300 132 L300 400 Q200 412 100 400 L100 132 L60 150 L30 80 Z"
-              fill="#15181c" stroke="#2b333c" stroke-width="2"/>
-        <path d="M160 18 Q200 60 240 18" fill="none" stroke="#2b333c" stroke-width="3"/>
-        <g id="print" font-family="ui-monospace, Consolas, monospace" text-anchor="middle">
-          <text x="200" y="150" font-size="13" fill="#5ab8ff">$ git commit -m "europe"</text>
-          <text x="200" y="215" font-size="58" font-weight="800" fill="#7cf29a">SHIP</text>
-          <text x="200" y="272" font-size="58" font-weight="800" fill="#7cf29a">IT_</text>
-          <text x="200" y="310" font-size="12" fill="#8a96a3">// works on more than my machine</text>
-        </g>
-      </svg>
-      <div class="term">
-        <div><span class="p">~/merch $</span> cat shirt.yaml</div>
-        <div><span class="c">material:</span> 100% organic cotton</div>
-        <div><span class="c">fit:</span> unisex, made for long hack nights</div>
-        <div><span class="c">bugs:</span> 0 <span style="opacity:.6"># allegedly</span></div>
-      </div>
-    </div>
+  <section class="stage" id="stage">
+    <div id="scene3d"></div>
+    <span class="tag">// new drop · live on stage</span>
+    <div class="now"><span class="dot"></span>on stage: <b id="nowName">Midnight</b></div>
+    <div class="load" id="loadHint">booting stage…<div class="bar"><i id="loadBar"></i></div></div>
+    <!-- fallback if WebGL / three.js is unavailable -->
+    <svg id="shirt" viewBox="0 0 400 420" aria-label="Ship It Shirt">
+      <path id="shirtBody" d="M120 30 L160 18 Q200 48 240 18 L280 30 L370 80 L340 150 L300 132 L300 400 Q200 412 100 400 L100 132 L60 150 L30 80 Z"
+            fill="#15181c" stroke="#2b333c" stroke-width="2"/>
+      <path d="M160 18 Q200 60 240 18" fill="none" stroke="#2b333c" stroke-width="3"/>
+      <g id="print" font-family="ui-monospace, Consolas, monospace" text-anchor="middle">
+        <text x="200" y="150" font-size="13" fill="#5ab8ff">$ git commit -m "europe"</text>
+        <text x="200" y="215" font-size="58" font-weight="800" fill="#7cf29a">SHIP</text>
+        <text x="200" y="272" font-size="58" font-weight="800" fill="#7cf29a">IT_</text>
+        <text x="200" y="310" font-size="12" fill="#8a96a3">// works on more than my machine</text>
+      </g>
+    </svg>
+    <div class="rail" id="rail"><div class="rail-in" id="colors">
+      <button class="card on" data-c="#15181c" data-n="Midnight" data-light="0" aria-pressed="true"></button>
+      <button class="card" data-c="#e9ecef" data-n="Paper" data-light="1" aria-pressed="false"></button>
+      <button class="card" data-c="#1f7a45" data-n="Terminal Green" data-light="0" aria-pressed="false"></button>
+      <button class="card" data-c="#2f6bff" data-n="Electric Blue" data-light="0" aria-pressed="false"></button>
+      <button class="card" data-c="#e0313f" data-n="Signal Red" data-light="0" aria-pressed="false"></button>
+    </div></div>
   </section>
 
-  <section>
+  <section class="info">
+    <div class="bf-kicker">BLACK FRIDAY · −50%</div>
     <div class="crumbs">shop / shirts / ship-it</div>
     <h1>The <code>Ship&nbsp;It</code><br>Coder Shirt</h1>
     <p class="sub">For everyone who pushes to prod on a Friday and still sleeps well. Heavyweight organic cotton, terminal-green print, zero merge conflicts.</p>
     <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span><span class="off">-50%</span></div>
+    <div class="bf-info"><span>ends in <b id="cd">05:59:59</b></span><span><b id="viewers">214</b> viewing now</span></div>
 
-    <div class="label">color</div>
-    <div class="opts" id="colors">
-      <button class="opt swatch on" data-c="#15181c" data-n="Midnight" style="background:#15181c" title="Midnight"></button>
-      <button class="opt swatch" data-c="#e9ecef" data-n="Paper" style="background:#e9ecef" title="Paper"></button>
-      <button class="opt swatch" data-c="#1d3b2a" data-n="Terminal" style="background:#1d3b2a" title="Terminal"></button>
-    </div>
+    <div class="label">color · <b id="colorName">Midnight</b></div>
+    <div class="pick"><span class="sw" id="colorSw" style="background:#15181c"></span>pick a colorway in the stage bar — it walks on stage</div>
 
     <div class="label">size</div>
     <div class="opts" id="sizes">
@@ -174,9 +252,15 @@
 
     <div class="row">
       <div class="qty"><button id="minus">−</button><span id="qty">1</span><button id="plus">+</button></div>
-      <button class="primary" id="addBtn">Add to cart</button>
+      <button class="primary" id="addBtn">Buy now →</button>
     </div>
 
+    <div class="term">
+      <div><span class="p">~/merch $</span> cat shirt.yaml</div>
+      <div><span class="c">material:</span> 100% organic cotton</div>
+      <div><span class="c">fit:</span> unisex, made for long hack nights</div>
+      <div><span class="c">bugs:</span> 0 <span style="opacity:.6"># allegedly</span></div>
+    </div>
     <div class="feats">
       <div><b>⚡ fast shipping</b>2–3 days across Europe</div>
       <div><b>↺ 30-day returns</b>no questions, no stack traces</div>
@@ -212,10 +296,9 @@
 const API = new URLSearchParams(location.search).get("api")
   || (location.protocol.startsWith("http") && location.port === "8080" ? location.origin : "http://localhost:8080");
 const BASE_PRICE = 29.0;
-const SLOW_HINT_MS = 3000;
 
 /* ---------- state ---------- */
-const state = { cart: [], color: {c:"#15181c", n:"Midnight"}, size: "M", qty: 1, blackFriday: false, live: false, mockIncident: false };
+const state = { cart: [], color: {c:"#15181c", n:"Midnight"}, size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
 const $ = (id) => document.getElementById(id);
 const eur = (v) => v.toFixed(2).replace(".", ",") + " €";
 const unitPrice = () => state.blackFriday ? BASE_PRICE / 2 : BASE_PRICE;
@@ -223,15 +306,30 @@ const unitPrice = () => state.blackFriday ? BASE_PRICE / 2 : BASE_PRICE;
 /** Log helper - all calls visible in the console for debugging. */
 function logInfo(msg, data) { console.info("[shop]", msg, data ?? ""); }
 
-/* ---------- product options ---------- */
+/* ---------- colorway cards (product bar on the stage) ---------- */
+const TEE_ICON = `<svg viewBox="0 0 40 40"><path d="M13 6l4-2q3 3 6 0l4 2 9 5-3 7-4-2v19H11V16l-4 2-3-7z" fill="currentColor" stroke="rgba(255,255,255,.25)"/></svg>`;
+document.querySelectorAll("#colors .card").forEach(b => {
+  b.style.setProperty("--c", b.dataset.c);
+  b.innerHTML = `<span class="pv" style="color:${b.dataset.c}">${TEE_ICON}<img alt=""></span>
+    <span class="nm">${b.dataset.n}</span><span class="hx">${b.dataset.c}</span>`;
+});
 $("colors").addEventListener("click", (e) => {
-  const b = e.target.closest(".swatch"); if (!b) return;
-  document.querySelectorAll("#colors .swatch").forEach(x => x.classList.remove("on")); b.classList.add("on");
+  const b = e.target.closest(".card"); if (!b || b.classList.contains("on")) return;
+  document.querySelectorAll("#colors .card").forEach(x => { x.classList.remove("on"); x.setAttribute("aria-pressed", "false"); });
+  b.classList.add("on"); b.setAttribute("aria-pressed", "true");
+  b.classList.remove("emit"); void b.offsetWidth; b.classList.add("emit");
+  const light = b.dataset.light === "1";
   state.color = { c: b.dataset.c, n: b.dataset.n };
+  $("colorName").textContent = b.dataset.n; $("colorSw").style.background = b.dataset.c;
+  logInfo("colorway", state.color);
+  window.stageSelect?.(b);
+  // SVG fallback
   $("shirtBody").setAttribute("fill", b.dataset.c);
-  const light = b.dataset.n === "Paper";
   $("print").querySelectorAll("text").forEach((t, i) => t.setAttribute("fill", light ? ["#1d6fb8","#0d8a3a","#0d8a3a","#555"][i] : ["#5ab8ff","#7cf29a","#7cf29a","#8a96a3"][i]));
 });
+// no 3D after a while (CDN/WebGL problem) -> show the flat SVG shirt
+setTimeout(() => { if (!window.stageSelect) $("stage").classList.add("no3d"); }, 8000);
+
 $("sizes").addEventListener("click", (e) => {
   const b = e.target.closest(".opt"); if (!b) return;
   document.querySelectorAll("#sizes .opt").forEach(x => x.classList.remove("on")); b.classList.add("on");
@@ -242,9 +340,9 @@ $("plus").onclick = () => { state.qty = Math.min(9, state.qty + 1); $("qty").tex
 
 /* ---------- cart ---------- */
 $("addBtn").onclick = () => {
-  state.cart.push({ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty });
-  logInfo("add to cart", state.cart.at(-1));
-  renderCart(); openCart(true);
+  state.cart = [{ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty }];
+  logInfo("buy now", state.cart[0]);
+  runCheckout();
 };
 function renderCart() {
   const n = state.cart.reduce((a, i) => a + i.qty, 0);
@@ -264,47 +362,70 @@ $("cartBtn").onclick = () => openCart(true);
 $("closeCart").onclick = $("shade").onclick = () => openCart(false);
 
 /* ---------- checkout ---------- */
-$("checkoutBtn").onclick = async () => {
+const CHECKOUT_TIMEOUT_MS = 3000;
+const sleep = (ms) => new Promise(ok => setTimeout(ok, ms));
+$("checkoutBtn").onclick = () => runCheckout();
+
+/** Run the checkout: long spinner, then success or a checkout error (e.g. 504 timeout). */
+async function runCheckout() {
   openCart(false);
-  const t0 = performance.now();
-  $("box").innerHTML = `<div class="spinner"></div><div class="hint">processing payment…</div>
-    <div class="timer" id="timer">0.0s</div><div class="hint" id="slowHint"></div>`;
+  $("box").classList.remove("shake");
+  $("box").innerHTML = `<div class="spinner"></div><h2 style="margin-bottom:8px">Processing your order</h2>
+    <div class="hint" id="stepHint">contacting payment provider…</div>`;
   $("modal").classList.add("on");
-  const tick = setInterval(() => {
-    const ms = performance.now() - t0, el = $("timer"); if (!el) return;
-    el.textContent = (ms / 1000).toFixed(1) + "s";
-    el.className = "timer" + (ms > 6000 ? " bad" : ms > SLOW_HINT_MS ? " slow" : "");
-    if (ms > SLOW_HINT_MS) { $("slowHint").textContent = "this is taking longer than usual…"; $("slowHint").className = "hint warn"; }
-  }, 100);
+  const steps = ["contacting payment provider…", "reserving your size…", "confirming order…"];
+  let i = 0;
+  const st = setInterval(() => { const h = $("stepHint"); if (h) h.textContent = steps[++i % steps.length]; }, 1100);
+  const t0 = performance.now();
   let res;
   try { res = await apiCheckout(); }
-  catch (err) { res = { error: String(err) }; }
-  clearInterval(tick);
+  catch (e) { res = { ok: false, code: "NET", title: "Network Error", request_id: "-" }; }
+  clearInterval(st);
   const secs = ((performance.now() - t0) / 1000).toFixed(2);
-  logInfo("checkout done", { secs, res });
-  if (res.error) {
-    $("box").innerHTML = `<div class="ok">💥</div><h2>Checkout failed</h2><div class="hint">${res.error}</div><button class="ghost" onclick="closeModal()">close</button>`;
-    return;
-  }
+  logInfo("checkout result", { secs, res });
+  if (!res.ok) { showCheckoutError(res); return; }
   $("box").innerHTML = `<div class="ok">✓</div><h2>Order confirmed</h2>
     <div class="order">${res.order_id} · ${secs}s</div>
     <div class="hint">your shirt is on its way 🚀</div><button class="ghost" onclick="closeModal()">keep shopping</button>`;
   state.cart = []; renderCart(); confetti();
-};
+}
+
+/** Show the checkout error dialog (cart is kept so the user can retry). */
+function showCheckoutError(res) {
+  $("box").innerHTML = `<div class="err-icon">!</div><h2>Checkout failed</h2>
+    <div class="err-code">Error ${res.code} · ${res.title}</div>
+    <div class="hint">We couldn't complete your order. Your card was not charged.<br>Please try again in a moment.</div>
+    <div class="req">request_id: ${res.request_id}</div>
+    <div class="err-actions"><button class="primary" onclick="runCheckout()">Try again</button>
+    <button class="ghost" onclick="closeModal()">Back to shop</button></div>`;
+  void $("box").offsetWidth; $("box").classList.add("shake");
+}
 function closeModal() { $("modal").classList.remove("on"); }
 
-/** POST /api/checkout - falls back to a local mock if the backend is unreachable. */
+/** POST /api/checkout. Returns {ok:true, order_id} or {ok:false, code, title, request_id}.
+ *  Falls back to a local mock if the backend is unreachable. */
 async function apiCheckout() {
+  const rid = "req_" + Math.random().toString(16).slice(2, 10);
   if (state.live) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS + 2000);
     try {
       const r = await fetch(API + "/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: state.cart }) });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return await r.json();
-    } catch (e) { logInfo("backend unreachable, using mock", e); setLive(false); }
+        body: JSON.stringify({ items: state.cart }), signal: ctrl.signal });
+      clearTimeout(to);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, code: r.status, title: r.status === 504 ? "Gateway Timeout" : "Server Error",
+                          request_id: d.request_id || rid };
+      return { ok: true, ...d };
+    } catch (e) {
+      clearTimeout(to);
+      if (e.name === "AbortError") return { ok: false, code: 504, title: "Gateway Timeout", request_id: rid };
+      logInfo("backend unreachable, using mock", e); setLive(false);
+    }
   }
-  await new Promise(ok => setTimeout(ok, state.mockIncident ? 9500 + Math.random() * 600 : 280 + Math.random() * 60));
-  return { order_id: "TE-" + Math.random().toString(16).slice(2, 8).toUpperCase(), status: "confirmed" };
+  if (state.mockIncident) { await sleep(CHECKOUT_TIMEOUT_MS); return { ok: false, code: 504, title: "Gateway Timeout", request_id: rid }; }
+  await sleep(280 + Math.random() * 60);
+  return { ok: true, order_id: "TE-" + Math.random().toString(16).slice(2, 8).toUpperCase() };
 }
 
 /* ---------- backend link + black friday ---------- */
@@ -318,6 +439,7 @@ function setBlackFriday(on) {
   state.blackFriday = on;
   document.body.classList.toggle("bf", on);
   $("priceNow").textContent = eur(unitPrice());
+  $("addBtn").textContent = on ? `Buy now – ${eur(unitPrice())} →` : "Buy now →";
   renderCart();
 }
 /** Poll backend state: detects LIVE/MOCK and whether Black Friday is running. */
@@ -334,7 +456,7 @@ async function post(path) {
   try { await fetch(API + path, { method: "POST" }); } catch (e) { logInfo("post failed " + path, e); }
 }
 $("bfBtn").onclick = async () => { state.mockIncident = true; await post("/api/incident/start"); setBlackFriday(true); };
-$("resetBtn").onclick = async () => { state.mockIncident = false; await post("/api/reset"); setBlackFriday(false); };
+$("resetBtn").onclick = async () => { state.mockIncident = true; await post("/api/reset"); setBlackFriday(true); };
 $("demoToggle").onclick = () => $("demo").classList.toggle("on");
 document.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "d" && !e.target.closest("input")) $("demo").classList.toggle("on"); });
 $("apiInfo").textContent = "api: " + API;
@@ -357,6 +479,409 @@ function confetti() {
 
 /* ---------- init ---------- */
 renderCart(); poll(); setInterval(poll, 3000);
+$("priceNow").textContent = eur(unitPrice()); $("addBtn").textContent = `Buy now – ${eur(unitPrice())} →`;
+/* Black Friday countdown + live viewers (pure decoration) */
+let cdLeft = 5 * 3600 + 59 * 60 + 59;
+setInterval(() => {
+  cdLeft = Math.max(0, cdLeft - 1);
+  const h = String(Math.floor(cdLeft / 3600)).padStart(2, "0"), m = String(Math.floor(cdLeft % 3600 / 60)).padStart(2, "0"), sec = String(cdLeft % 60).padStart(2, "0");
+  $("cd").textContent = `${h}:${m}:${sec}`;
+  if (Math.random() < .3) $("viewers").textContent = 190 + Math.floor(Math.random() * 60);
+}, 1000);
 </script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+/*
+ * 3D product stage (Three.js).
+ * Dark studio: floor with soft spotlight shadow, green/blue rim lights, faint grid.
+ * Each colorway = one figure (RobotExpressive, body tinted in the shirt color,
+ * "SHIP IT_" print on the chest). Selecting a colorway: the current figure waves
+ * and walks off, the new one grows out of its card, walks to the center and dances.
+ * Figures are small state machines (spawn -> walkIn -> turn -> dance -> wave -> walkOut),
+ * so fast clicking never breaks the sequence.
+ * Public hook: window.stageSelect(cardElement) - called by the colorway cards.
+ */
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const MODEL_URLS = [
+  "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
+  "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
+];
+const FIG_H = 2.0;          // figure height in scene units
+const WALK_SPEED = 1.05;    // units/s, matches the Walking clip at timeScale 1
+const EXIT_TIMESCALE = 1.35;
+const FADE = 0.35;          // animation crossfade in seconds
+const SPAWN_S = 0.7;        // grow-out-of-the-card duration
+const WAVE_S = 1.35;        // how long the leaving figure waves
+const CENTER = new THREE.Vector3(0, 0, 0);
+
+const stageEl = document.getElementById("stage");
+const host = document.getElementById("scene3d");
+const $ = (id) => document.getElementById(id);
+
+// ---------- renderer / scene ----------
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+} catch (e) {
+  console.warn("[stage] WebGL unavailable, using SVG fallback", e);
+  stageEl.classList.add("no3d");
+  throw e;
+}
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b0d10, 9, 19);
+const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 60);
+camera.position.set(0, 1.6, 8);
+const lookAt = new THREE.Vector3(0, 1.0, 0);
+
+function addLights(target) {
+  target.add(new THREE.HemisphereLight(0xc8d8ff, 0x0b0d10, 0.7));
+  const fill = new THREE.DirectionalLight(0xffffff, 1.3); fill.position.set(-3, 2.5, 6); target.add(fill);
+  const rim = new THREE.DirectionalLight(0x7cf29a, 2.2); rim.position.set(-5, 3, -4); target.add(rim);
+  const rim2 = new THREE.DirectionalLight(0x5ab8ff, 1.4); rim2.position.set(5, 2.5, -3.5); target.add(rim2);
+}
+addLights(scene);
+const spot = new THREE.SpotLight(0xffffff, 140, 20, 0.45, 0.75, 1.6);
+spot.position.set(0.6, 8, 3.2);
+spot.castShadow = true;
+spot.shadow.mapSize.set(1024, 1024);
+spot.shadow.bias = -0.0004;
+spot.shadow.normalBias = 0.02;
+scene.add(spot, spot.target);
+
+// ---------- floor ----------
+function radialTexture(stops, size = 256) {
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const g = c.getContext("2d"), grd = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  stops.forEach(([o, col]) => grd.addColorStop(o, col));
+  g.fillStyle = grd; g.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 64),
+  new THREE.MeshStandardMaterial({ color: 0x14191e, roughness: 0.82, metalness: 0.0 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const grid = new THREE.GridHelper(28, 56, 0x7cf29a, 0x7cf29a);
+grid.material.transparent = true; grid.material.opacity = 0.06; grid.material.depthWrite = false; grid.position.y = 0.002;
+scene.add(grid);
+const pool = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({
+  map: radialTexture([[0, "rgba(255,255,255,.16)"], [0.5, "rgba(255,255,255,.05)"], [1, "rgba(255,255,255,0)"]]),
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+pool.rotation.x = -Math.PI / 2; pool.position.y = 0.004; scene.add(pool);
+const ring = new THREE.Mesh(new THREE.RingGeometry(1.12, 1.15, 128),
+  new THREE.MeshBasicMaterial({ color: 0x7cf29a, transparent: true, opacity: 0.25, depthWrite: false }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.006; scene.add(ring);
+
+// ---------- chest print ----------
+function printCanvas(light) {
+  const c = document.createElement("canvas"); c.width = c.height = 1024;
+  const g = c.getContext("2d"); g.textAlign = "center";
+  const blue = light ? "#1d6fb8" : "#5ab8ff", green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#a3adb8";
+  const mono = 'ui-monospace, "JetBrains Mono", Consolas, monospace';
+  g.fillStyle = blue; g.font = `600 52px ${mono}`; g.fillText('$ git commit -m "europe"', 512, 230);
+  g.fillStyle = green; g.font = `800 250px ${mono}`; g.fillText("SHIP", 512, 480); g.fillText("IT_", 512, 710);
+  g.fillStyle = grey; g.font = `600 46px ${mono}`; g.fillText("// works on more than my machine", 512, 810);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+const PRINT_MATS = [false, true].map(light => { const map = printCanvas(light); return new THREE.MeshStandardMaterial({
+  map, transparent: true, roughness: 0.8, depthWrite: false,
+  // slight glow so the print stays readable on dark bodies (terminal look)
+  emissiveMap: map, emissive: 0xffffff, emissiveIntensity: light ? 0.12 : 0.6,
+  polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }); });
+const printMat = (light) => PRINT_MATS[light ? 1 : 0];
+/** Plane slightly bent around the vertical axis so it hugs a rounded chest. */
+function printGeometry(size, curve) {
+  const g = new THREE.PlaneGeometry(size, size, 24, 1), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, -curve * p.getX(i) ** 2);
+  g.computeVertexNormals(); return g;
+}
+
+// ---------- figure: RobotExpressive ----------
+let proto = null;            // loaded gltf (with print attached to the torso)
+let protoScale = 1;
+function preparePrototype(gltf) {
+  const s = gltf.scene;
+  s.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(s);
+  protoScale = FIG_H / (box.max.y - box.min.y);
+  s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+  // print plane in model space, attached to the rigid torso group (follows the Body bone)
+  const torso = s.getObjectByName("Torso");
+  const plane = new THREE.Mesh(printGeometry(1.0, 0.22), PRINT_MATS[0]);
+  plane.name = "shirtPrint";
+  plane.position.set(0, 2.02, 0.705);
+  s.add(plane); plane.updateMatrixWorld(true);
+  (torso || s).attach(plane);
+  proto = gltf;
+}
+function makeRobot(hex, light) {
+  const model = SkeletonUtils.clone(proto.scene);
+  model.scale.setScalar(protoScale);
+  let bodyMat = null;
+  model.traverse(o => {
+    if (!o.isMesh) return;
+    if (o.name === "shirtPrint") { o.material = printMat(light); return; }
+    if (o.material.name === "Main") {
+      if (!bodyMat) { bodyMat = o.material.clone(); bodyMat.color.set(hex); bodyMat.roughness = 0.62; bodyMat.metalness = 0.05; }
+      o.material = bodyMat;
+    }
+  });
+  const root = new THREE.Group(); root.add(model);
+  const mixer = new THREE.AnimationMixer(model);
+  const actions = {};
+  for (const clip of proto.animations) {
+    const a = mixer.clipAction(clip);
+    if (["Wave", "Jump", "ThumbsUp"].includes(clip.name)) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
+    actions[clip.name] = a;
+  }
+  let cur = null;
+  return {
+    root,
+    play(name, ts = 1) {
+      const next = actions[name]; if (!next) return;
+      if (next === cur) { next.setEffectiveTimeScale(ts); return; }
+      if (cur) cur.fadeOut(FADE);
+      next.reset().setEffectiveTimeScale(ts).setEffectiveWeight(1).fadeIn(FADE).play();
+      cur = next;
+    },
+    update(dt) { mixer.update(dt); },
+    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); bodyMat?.dispose(); },
+  };
+}
+
+// ---------- figure: procedural fallback (if the model cannot be loaded) ----------
+function makeFallback(hex, light) {
+  const body = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.6 });
+  const grey = new THREE.MeshStandardMaterial({ color: 0x9aa3ab, roughness: 0.5 });
+  const root = new THREE.Group(), model = new THREE.Group(); root.add(model);
+  const part = (geo, mat, x, y, z, parent) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+  const limb = (x, y, len, r, mat, parent) => { const p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p);
+    part(new THREE.CapsuleGeometry(r, len, 4, 12), mat, 0, -len / 2 - r, 0, p); return p; };
+  const torso = new THREE.Group(); torso.position.y = 0.95; model.add(torso);
+  part(new THREE.CapsuleGeometry(0.34, 0.42, 6, 18), body, 0, 0.32, 0, torso);
+  part(new THREE.SphereGeometry(0.28, 24, 16), grey, 0, 0.95, 0, torso);
+  const eye = new THREE.MeshBasicMaterial({ color: 0x7cf29a });
+  part(new THREE.SphereGeometry(0.045, 10, 8), eye, 0.1, 0.98, 0.25, torso);
+  part(new THREE.SphereGeometry(0.045, 10, 8), eye, -0.1, 0.98, 0.25, torso);
+  const pr = part(printGeometry(0.44, 0.6), printMat(light), 0, 0.36, 0.345, torso); pr.castShadow = false;
+  const armL = limb(0.45, 0.6, 0.42, 0.085, body, torso), armR = limb(-0.45, 0.6, 0.42, 0.085, body, torso);
+  const legL = limb(0.16, 0.95, 0.7, 0.11, grey, model), legR = limb(-0.16, 0.95, 0.7, 0.11, grey, model);
+  let mode = "Idle", t = 0;
+  return {
+    root,
+    play(name) { if (name !== mode) { mode = name; t = 0; } },
+    update(dt) {
+      t += dt;
+      for (const o of [armL, armR, legL, legR, torso]) o.rotation.set(0, 0, 0);
+      torso.position.y = 0.95;
+      const s = Math.sin(t * 6.5);
+      if (mode === "Walking" || mode === "Jump") {
+        legL.rotation.x = s * 0.6; legR.rotation.x = -s * 0.6; armL.rotation.x = -s * 0.5; armR.rotation.x = s * 0.5;
+        torso.position.y += Math.abs(Math.cos(t * 6.5)) * 0.04;
+      } else if (mode === "Dance") {
+        torso.rotation.z = Math.sin(t * 4) * 0.15; torso.position.y += Math.abs(Math.sin(t * 4)) * 0.08;
+        armL.rotation.z = 2.4 + Math.sin(t * 8) * 0.4; armR.rotation.z = -2.4 + Math.sin(t * 8 + 1) * 0.4;
+        legL.rotation.z = Math.sin(t * 4) * 0.12; legR.rotation.z = Math.sin(t * 4) * 0.12;
+      } else if (mode === "Wave") {
+        armR.rotation.z = -2.6 + Math.sin(t * 10) * 0.35; torso.position.y += Math.sin(t * 2) * 0.015;
+      } else {
+        torso.position.y += Math.sin(t * 2) * 0.015; armL.rotation.z = 0.08; armR.rotation.z = -0.08;
+      }
+    },
+    dispose() {},
+  };
+}
+const makeFigure = (hex, light) => proto ? makeRobot(hex, light) : makeFallback(hex, light);
+
+// ---------- actors on stage ----------
+const actors = [];
+let current = null;
+const ease = (k) => 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;   // easeOutBack
+const yawTo = (from, to, k) => { let d = to - from; d = Math.atan2(Math.sin(d), Math.cos(d)); return from + d * k; };
+const raycaster = new THREE.Raycaster(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+/** Floor point "under" a DOM element (the colorway card), so figures step out of their card. */
+function floorPointFor(el) {
+  const r = el.getBoundingClientRect(), c = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((r.left + r.width / 2 - c.left) / c.width) * 2 - 1,
+                               -((r.top + r.height * 0.35 - c.top) / c.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, p)) p.set(0, 0, 3);
+  p.x = THREE.MathUtils.clamp(p.x, -4.2, 4.2); p.z = THREE.MathUtils.clamp(p.z, 0.8, 3.4);
+  return p;
+}
+
+function spawn(cardEl) {
+  const light = cardEl.dataset.light === "1";
+  const fig = makeFigure(cardEl.dataset.c, light);
+  const from = floorPointFor(cardEl);
+  fig.root.position.copy(from);
+  fig.root.rotation.y = Math.atan2(CENTER.x - from.x, CENTER.z - from.z);
+  fig.root.scale.setScalar(0.12);
+  fig.play("Jump");
+  scene.add(fig.root);
+  const a = { fig, mode: "spawn", t: 0, name: cardEl.dataset.n, exit: null };
+  actors.push(a);
+  return a;
+}
+function leave(a, side) {
+  a.exit = new THREE.Vector3(side * 7.5, 0, -2.2);
+  if (a.mode === "dance" || a.mode === "turn") { a.mode = "wave"; a.t = 0; a.fig.play("Wave"); }
+  else if (a.mode !== "walkOut" && a.mode !== "wave") { a.mode = "walkOut"; a.fig.play("Walking", EXIT_TIMESCALE); }
+}
+let lastSide = 1;
+function select(cardEl) {
+  const next = spawn(cardEl);
+  if (current) {
+    // leave towards the side away from the new figure
+    const side = Math.abs(next.fig.root.position.x) > 0.3 ? -Math.sign(next.fig.root.position.x) : (lastSide = -lastSide);
+    leave(current, side);
+  }
+  current = next;
+}
+function walkTowards(a, target, speed, dt) {
+  const p = a.fig.root.position, d = new THREE.Vector3().subVectors(target, p); d.y = 0;
+  const dist = d.length(), step = speed * dt;
+  if (dist > 1e-3) a.fig.root.rotation.y = yawTo(a.fig.root.rotation.y, Math.atan2(d.x, d.z), 1 - Math.exp(-dt * 8));
+  if (dist <= step) { p.copy(target); return true; }
+  p.addScaledVector(d.normalize(), step); return false;
+}
+function updateActors(dt) {
+  for (let i = actors.length - 1; i >= 0; i--) {
+    const a = actors[i], r = a.fig.root;
+    a.fig.update(dt); a.t += dt;
+    switch (a.mode) {
+      case "spawn": {
+        const k = Math.min(1, a.t / SPAWN_S);
+        r.scale.setScalar(0.12 + 0.88 * ease(k));
+        r.position.y = Math.sin(k * Math.PI) * 0.18;
+        if (k >= 1) { r.position.y = 0; r.scale.setScalar(1); a.mode = "walkIn"; a.fig.play("Walking"); }
+        break;
+      }
+      case "walkIn":
+        if (walkTowards(a, CENTER, WALK_SPEED, dt)) { a.mode = "turn"; a.t = 0; a.fig.play("Idle"); }
+        break;
+      case "turn":
+        r.rotation.y = yawTo(r.rotation.y, 0, 1 - Math.exp(-dt * 7));
+        if (Math.abs(Math.atan2(Math.sin(r.rotation.y), Math.cos(r.rotation.y))) < 0.04 || a.t > 1) {
+          a.mode = "dance"; a.fig.play("Dance"); $("nowName").textContent = a.name;
+        }
+        break;
+      case "dance": break;
+      case "wave":
+        r.rotation.y = yawTo(r.rotation.y, 0, 1 - Math.exp(-dt * 6));
+        if (a.t > WAVE_S) { a.mode = "walkOut"; a.fig.play("Walking", EXIT_TIMESCALE); }
+        break;
+      case "walkOut":
+        if (walkTowards(a, a.exit, WALK_SPEED * EXIT_TIMESCALE, dt)) {
+          scene.remove(r); a.fig.dispose(); actors.splice(i, 1);
+        }
+        break;
+    }
+  }
+}
+
+// ---------- camera: soft follow + pointer parallax ----------
+const pointer = new THREE.Vector2();
+stageEl.addEventListener("pointermove", (e) => {
+  const r = stageEl.getBoundingClientRect();
+  pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
+});
+stageEl.addEventListener("pointerleave", () => pointer.set(0, 0));
+const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
+function updateCamera(dt, t) {
+  const aspect = camera.aspect;
+  const focus = current ? current.fig.root.position : CENTER;
+  const dancing = current && current.mode === "dance";
+  let dist = dancing ? 7.0 : 7.9;
+  if (aspect < 1.15) dist *= Math.min(1.45, Math.pow(1.15 / aspect, 0.6));   // portrait: step back a bit
+  camGoal.set(Math.sin(t * 0.18) * 0.7 + focus.x * 0.35 + pointer.x * 0.5,
+              1.55 + (dancing ? 0 : 0.15) - pointer.y * 0.2,
+              dist + focus.z * 0.25);
+  lookGoal.set(focus.x * 0.45, 0.82, focus.z * 0.3);
+  const k = 1 - Math.exp(-dt * 1.8);
+  camera.position.lerp(camGoal, k); lookAt.lerp(lookGoal, k);
+  camera.lookAt(lookAt);
+  spot.target.position.lerp(new THREE.Vector3(focus.x, 0, focus.z), k * 1.5);
+  pool.position.x = spot.target.position.x; pool.position.z = spot.target.position.z;
+  ring.material.opacity = dancing ? 0.35 + 0.2 * Math.sin(t * 7.5) : 0.18;
+}
+
+// ---------- sizing / loop ----------
+function resize() {
+  const w = host.clientWidth, h = host.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(host); resize();
+let visible = true;
+new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(stageEl);
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  if (!visible) return;
+  updateActors(dt); updateCamera(dt, t);
+  renderer.render(scene, camera);
+});
+
+// ---------- colorway thumbnails (rendered once with a small offscreen renderer) ----------
+function renderThumbnails() {
+  let r;
+  try { r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); } catch { return; }
+  r.setPixelRatio(1); r.setSize(208, 140, false);
+  r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+  const s = new THREE.Scene(); addLights(s);
+  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(2, 3, 5); s.add(key);
+  const cam = new THREE.PerspectiveCamera(24, 208 / 140, 0.1, 30);
+  cam.position.set(0, 1.25, 6.4); cam.lookAt(0, 1.0, 0);
+  document.querySelectorAll("#colors .card").forEach(card => {
+    const f = makeFigure(card.dataset.c, card.dataset.light === "1");
+    f.play("Idle"); f.update(0.6); f.root.rotation.y = -0.3;
+    s.add(f.root); r.render(s, cam);
+    const pv = card.querySelector(".pv"); pv.querySelector("img").src = r.domElement.toDataURL("image/png"); pv.classList.add("has-img");
+    s.remove(f.root); f.dispose();
+  });
+  r.dispose(); r.forceContextLoss();
+}
+
+// ---------- boot ----------
+async function loadModel() {
+  const loader = new GLTFLoader();
+  for (const url of MODEL_URLS) {
+    try {
+      return await loader.loadAsync(url, (e) => { if (e.total) $("loadBar").style.width = (100 * e.loaded / e.total).toFixed(0) + "%"; });
+    } catch (e) { console.warn("[stage] model load failed:", url, e?.message || e); }
+  }
+  return null;
+}
+(async () => {
+  const gltf = await loadModel();
+  if (gltf) preparePrototype(gltf);
+  else console.warn("[stage] using procedural fallback figure");
+  renderThumbnails();
+  stageEl.classList.add("ready");
+  window.stageSelect = select;
+  if (new URLSearchParams(location.search).has("debug")) window.__stage = { actors, scene, camera, renderer };
+  select(document.querySelector("#colors .card.on") || document.querySelector("#colors .card"));
+})();
+</script>
+
 </body>
 </html>
