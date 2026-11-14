@@ -64,7 +64,7 @@ class ProviderBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = providerInfo(provider);
-    return ShadBadge(label: p.name, leading: Dot(color: p.color, size: 6));
+    return ShadBadge(label: p.name, leading: ProviderLogo(provider: provider, size: 12));
   }
 }
 
