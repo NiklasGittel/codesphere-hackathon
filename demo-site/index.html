@@ -8,7 +8,8 @@
   the AI SRE agent fixes the infrastructure.
 
   Static page in the {Tech: Europe} look (Kode Mono, black/white, dashed rules,
-  table cards). The shirt is a flat SVG that is recolored per colorway.
+  table cards). The shirt is a photo (shirt.webp, Unsplash License) in one color,
+  black; the print is an SVG on top, shaded by shirt-shade.webp (multiply) so it follows the folds.
 
   Backend: POST /api/checkout, POST /api/incident/start, POST /api/reset,
   GET /api/infra/state (see backend/README.md).
@@ -28,199 +29,178 @@
 <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#fafafa; --card:#ffffff; --ink:#0b0b0c; --muted:#6b6b70; --faint:#9a9aa0; --line:#e6e6e8;
-    --red:#e5262d; --mono:"Kode Mono", ui-monospace, Consolas, monospace;
+    --bg:#0b0d10; --ink:#e8edf2; --muted:#8a96a3; --faint:#5d6773; --dash:rgba(232,237,242,.55);
+    --accent:#7cf29a; --accent2:#5ab8ff; --red:#ff5d6c;
+    --mono:"Kode Mono", ui-monospace, Consolas, monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:14px;line-height:1.55;min-height:100vh}
   button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
-  a{color:inherit}
+  a{color:inherit;text-underline-offset:4px}
 
-  .top{display:flex;align-items:center;gap:10px;padding:24px 40px}
-  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:14px}
-  .brand svg{width:20px;height:20px}
-  .top .sub{color:var(--faint)}
+  /* top nav */
+  .nav{max-width:880px;margin:0 auto;padding:40px 0 26px;display:flex;justify-content:space-between;gap:24px}
+  .nav{align-items:center}
+  .nav .links{display:flex;gap:34px}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:600}
+  .brand svg{width:20px;height:20px;color:var(--accent)}
 
-  .wrap{max-width:1040px;margin:0 auto;padding:24px 40px 80px}
-  .back{display:inline-block;color:var(--muted);text-decoration:none;font-size:12px;margin-bottom:20px}
-  .back:hover{color:var(--ink)}
-  .badges{display:flex;gap:8px;margin-bottom:14px}
-  .badge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:999px;border:1px solid var(--ink);line-height:1.4}
-  .badge.red{background:var(--red);border-color:var(--red);color:#fff}
+  /* dashed frame, like a terminal window drawn in ASCII */
+  .frame{position:relative;max-width:880px;margin:0 auto;border:1px dashed var(--dash);background:var(--bg)}
+  .frame::after,.box::after{content:"+";position:absolute;top:-10px;right:-5px;line-height:1;color:var(--ink);background:var(--bg)}
+
+  /* "---- label -------" dividers */
+  .divider{display:flex;align-items:center;gap:14px;margin:30px -1px 0;white-space:nowrap}
+  .frame > .divider:first-child{margin-top:22px}
+  .divider::before{content:"";width:40px;border-top:1px dashed var(--dash)}
+  .divider::after{content:"";flex:1;border-top:1px dashed var(--dash)}
+  .divider + *{border-top:1px dashed var(--dash);margin-top:10px}
+
+  /* product */
+  .product{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .shot{border-right:1px dashed var(--dash);padding:28px;display:grid;place-items:center;
+        background:radial-gradient(circle at 50% 45%,#18202a,transparent 70%)}
+  .tee{position:relative;width:100%;max-width:400px}
+  .tee img{display:block;width:100%;height:auto}
+  .tee .print,.tee .shade{position:absolute;inset:0;width:100%;height:100%}
+  .tee .shade{mix-blend-mode:multiply;pointer-events:none}
+  .info{padding:28px 32px}
+  .eyebrow{color:var(--accent);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
   body:not(.bf) #bfBadge{display:none}
-
-  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start}
-  .photo{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:36px 28px;aspect-ratio:1/1.05;display:grid;place-items:center}
-  .photo svg{width:100%;height:auto;max-width:420px}
-
-  h1{font-size:40px;line-height:1.08;font-weight:600;letter-spacing:-.01em;margin-bottom:14px}
+  h1{font-size:24px;font-weight:600;margin:10px 0 4px}
   .meta{color:var(--muted);font-size:13px}
-  .price{display:flex;align-items:baseline;gap:12px;margin:18px 0 6px}
-  .price .now{font-size:26px;font-weight:600}
+  .price{display:flex;align-items:baseline;gap:12px;margin:18px 0 2px}
+  .price .now{font-size:30px;font-weight:600}
   .price .old{color:var(--faint);text-decoration:line-through}
-  .price .off{font-size:11px;border:1px solid var(--ink);border-radius:999px;padding:1px 8px}
-  body:not(.bf) .price .old, body:not(.bf) .price .off{display:none}
-  blockquote{border-left:1px solid var(--ink);padding:2px 0 2px 18px;margin:22px 0 28px;color:#2a2a2e}
+  body:not(.bf) .price .old{display:none}
+  .opt{display:flex;align-items:center;gap:6px;margin-top:18px}
+  .opt .k{color:var(--muted);width:56px}
+  .size,.qty button{padding:2px 3px;color:var(--muted)}
+  .size::before,.qty button::before{content:"["} .size::after,.qty button::after{content:"]"}
+  .size:hover,.qty button:hover{color:var(--ink)}
+  .size.on{color:var(--accent)}
+  .qty{display:flex;align-items:center;gap:6px} .qty span{min-width:16px;text-align:center}
+  .buybox{display:block;margin-top:24px;white-space:pre;line-height:1.3;text-align:left;color:var(--accent)}
+  .buybox:hover{background:rgba(124,242,154,.08)}
+  .buybox:disabled{opacity:.5;cursor:default}
 
-  .sec{display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 10px}
-  .sec h2{font-size:20px;font-weight:500}
-  .sec small{color:var(--faint);font-size:11px}
-  .table{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-  .row{display:grid;grid-template-columns:120px 1fr auto;gap:16px;align-items:center;width:100%;text-align:left;padding:13px 22px;border-top:1px solid var(--line)}
-  .row:first-child{border-top:0}
-  .row .k{color:var(--muted)}
-  .tag{font-size:9px;letter-spacing:.06em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:999px;padding:2px 8px}
-  #colors .row{grid-template-columns:22px 1fr auto auto}
-  #colors .row:hover{background:#f6f6f7}
-  #colors .sw{width:18px;height:18px;border-radius:50%;border:1px solid rgba(0,0,0,.18)}
-  #colors .hex{color:var(--faint);font-size:12px}
-  #colors .check{width:14px;text-align:right;visibility:hidden}
-  #colors .row.on .check{visibility:visible}
+  /* details as key ........ value */
+  .specs{padding:22px 32px}
+  .spec{display:flex;gap:10px;padding:5px 0}
+  .spec .k{color:var(--muted)}
+  .spec .dots{flex:1;border-bottom:1px dotted var(--faint);transform:translateY(-6px)}
+  .spec .tag{color:var(--accent2)}
 
-  .sizes{display:flex;gap:8px;flex-wrap:wrap}
-  .size{min-width:52px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
-  .size.on{border-color:var(--ink);background:var(--ink);color:#fff}
+  footer{display:flex;justify-content:center;gap:32px;padding:26px 16px 80px;font-size:11px}
 
-  .buy{display:flex;gap:12px;margin-top:22px}
-  .qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;background:var(--card)}
-  .qty button{width:40px;height:50px;font-size:16px}
-  .qty span{width:28px;text-align:center}
-  .btn{flex:1;height:50px;border-radius:12px;background:var(--ink);color:#fff;font-weight:600}
-  .btn:disabled{opacity:.5;cursor:default}
-
-  hr.dashed{border:0;border-top:1px dashed #cfcfd3;margin:56px 0 8px}
+  /* background ASCII skyline */
+  .bgascii{position:fixed;left:0;right:0;bottom:0;z-index:-1;margin:0;font-family:var(--mono);font-size:9px;line-height:9px;
+           color:var(--muted);opacity:.22;pointer-events:none;overflow:hidden;white-space:pre}
 
   /* checkout modal */
-  .modal{position:fixed;inset:0;display:none;place-items:center;z-index:20;background:rgba(250,250,250,.75);backdrop-filter:blur(2px)}
+  .modal{position:fixed;inset:0;display:none;place-items:center;z-index:20;background:rgba(6,8,10,.8)}
   .modal.on{display:grid}
-  .box{width:420px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px;text-align:center;
-       box-shadow:0 20px 50px rgba(0,0,0,.08)}
-  .box h2{font-size:20px;font-weight:600;margin-bottom:6px}
-  .spinner{width:44px;height:44px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ink);margin:0 auto 18px;animation:spin .8s linear infinite}
+  .box{position:relative;width:400px;max-width:calc(100vw - 32px);background:var(--bg);border:1px dashed var(--dash);padding:30px;text-align:center}
+  .box h2{font-size:18px;font-weight:600;margin-bottom:6px}
+  .spinner{width:40px;height:40px;border-radius:50%;border:3px solid #232a33;border-top-color:var(--accent);margin:0 auto 18px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .hint{color:var(--muted);font-size:13px;min-height:20px}
-  .err-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;font-weight:700;color:#fff;background:var(--red)}
-  .err-code{color:var(--red);margin:4px 0 12px;font-size:13px}
-  .ok-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;color:#fff;background:var(--ink)}
-  .order{margin:4px 0 12px;font-size:13px}
-  .req{color:var(--faint);font-size:11px;margin-top:10px}
-  .actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
-  .actions .btn{flex:0 0 auto;height:42px;padding:0 20px}
-  .ghost{height:42px;padding:0 18px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  .err-icon{color:var(--red);font-size:20px;font-weight:700;margin-bottom:10px}
+  .err-code{color:var(--red);margin:4px 0 8px;font-size:13px}
+  .ok-icon{color:var(--accent);font-size:20px;font-weight:700;margin-bottom:10px}
+  .order{margin:4px 0 8px;font-size:13px}
+  .actions{display:flex;gap:18px;justify-content:center;align-items:center;margin-top:18px}
+  .actions .btn{border:1px dashed var(--accent);color:var(--accent);padding:8px 18px}
+  .actions .btn:hover{background:rgba(124,242,154,.08)}
+  .ghost{text-decoration:underline;text-underline-offset:4px;color:var(--muted)}
+  .ghost:hover{color:var(--ink)}
 
   /* demo controls */
-  .demo-toggle{position:fixed;right:16px;bottom:16px;width:36px;height:36px;border-radius:50%;background:var(--card);
-       border:1px solid var(--line);color:var(--muted);z-index:15}
-  .demo{position:fixed;right:16px;bottom:62px;width:260px;background:var(--card);border:1px solid var(--line);border-radius:14px;
-       padding:14px;z-index:15;display:none;font-size:12px;box-shadow:0 12px 30px rgba(0,0,0,.08)}
+  .demo-toggle{position:fixed;right:16px;bottom:16px;width:36px;height:36px;background:var(--bg);
+       border:1px dashed var(--dash);color:var(--muted);z-index:15}
+  .demo{position:fixed;right:16px;bottom:62px;width:260px;background:var(--bg);border:1px dashed var(--dash);
+       padding:14px;z-index:15;display:none;font-size:12px}
   .demo.on{display:block}
   .demo .t{color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
-  .demo button{width:100%;margin-top:8px;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+  .demo button{width:100%;margin-top:8px;padding:8px;border:1px dashed var(--dash);text-align:left}
   .demo .bfb{border-color:var(--red);color:var(--red)}
   .demo .api{color:var(--faint);margin-top:10px;word-break:break-all}
-  .mode{padding:1px 8px;border-radius:999px;font-size:10px;border:1px solid currentColor}
-  .mode.live{color:#0a7a3a} .mode.mock{color:#b26a00}
+  .mode{padding:0 6px;font-size:10px;border:1px solid currentColor}
+  .mode.live{color:var(--accent)} .mode.mock{color:#ffcc4d}
 
-  @media(max-width:860px){
-    .top{padding:16px}
-    .wrap{padding:8px 16px 64px}
-    .grid{grid-template-columns:1fr;gap:28px}
-    h1{font-size:32px}
-    .row{grid-template-columns:96px 1fr auto;padding:12px 16px}
+  @media(max-width:920px){
+    .nav,.frame{margin-left:16px;margin-right:16px}
+  }
+  @media(max-width:760px){
+    .nav{padding:20px 0 16px;font-size:12px;gap:12px}
+    .nav .links{gap:14px}
+    .info,.specs{padding:22px 18px}
+    .product{grid-template-columns:1fr}
+    .shot{border-right:0;border-bottom:1px dashed var(--dash)}
+    footer{gap:18px}
   }
 </style>
 </head>
 <body class="bf">
 
-<header class="top">
-  <a class="brand" href="#" aria-label="{Tech: Europe} merch">
-    <svg viewBox="0 0 20 20" aria-hidden="true"><g fill="currentColor" id="logoDots"></g></svg>
-    <span>{Tech: Europe}</span>
-  </a>
-  <span class="sub">/ merch</span>
-</header>
+<nav class="nav">
+  <a class="brand" href="#" aria-label="{Tech: Europe} home"><svg viewBox="0 0 20 20" aria-hidden="true"><g fill="currentColor" id="logoDots"></g></svg>{Tech: Europe}</a>
+  <span class="links"><a href="#">Merch</a><a href="#">Hackathons</a><a href="#">Cart (0)</a></span>
+</nav>
 
-<main class="wrap">
-  <a class="back" href="#">← All merch</a>
-  <div class="badges"><span class="badge red" id="bfBadge">● Black Friday</span><span class="badge">New drop</span></div>
-
-  <div class="grid">
-    <div class="photo">
-      <svg id="shirt" viewBox="0 0 400 440" aria-label="Ship It Shirt">
-        <defs>
-          <linearGradient id="shade" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0" stop-color="#000" stop-opacity=".16"/><stop offset=".22" stop-color="#000" stop-opacity="0"/>
-            <stop offset=".78" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/>
-          </linearGradient>
-          <linearGradient id="light" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        <g id="tee">
-          <path id="shirtBody" d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z"
-                fill="#15181c"/>
-          <path d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z" fill="url(#shade)"/>
-          <path d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z" fill="url(#light)"/>
-          <g fill="none" stroke="#000" stroke-opacity=".22" stroke-linecap="round">
-            <path d="M166 20 Q200 60 234 20" stroke-width="7" stroke-opacity=".28"/>       <!-- collar rib -->
-            <path d="M100 140 Q104 120 112 66" stroke-width="1.5"/>                        <!-- sleeve seams -->
-            <path d="M300 140 Q296 120 288 66" stroke-width="1.5"/>
-            <path d="M72 140 L56 132" stroke-width="1.5" stroke-dasharray="3 3"/>          <!-- cuff stitching -->
-            <path d="M328 140 L344 132" stroke-width="1.5" stroke-dasharray="3 3"/>
-            <path d="M104 400 Q200 410 296 400" stroke-width="1.5" stroke-dasharray="3 3"/> <!-- hem stitching -->
-            <path d="M150 300 Q160 360 150 410" stroke-width="1" stroke-opacity=".08"/>    <!-- soft folds -->
-            <path d="M250 300 Q240 360 252 410" stroke-width="1" stroke-opacity=".08"/>
+<main class="frame">
+  <div class="divider">Black Friday drop</div>
+  <div class="product">
+    <div class="shot">
+      <div class="tee">
+        <!-- photo: Unsplash (mockupbee), Unsplash License; recolored to black, background removed -->
+        <img src="shirt.webp" width="840" height="804" alt="Ship It Shirt, black">
+        <svg class="print" viewBox="0 0 840 804" aria-hidden="true">
+          <g font-family="'Kode Mono', ui-monospace, Consolas, monospace" text-anchor="middle" fill="#ececec" opacity=".9">
+            <g id="printDots"></g>
+            <text x="438" y="246" font-size="28" font-weight="600">{Tech: Europe}</text>
+            <text x="420" y="372" font-size="112" font-weight="700">SHIP</text>
+            <text x="420" y="482" font-size="112" font-weight="700">IT_</text>
+            <text x="420" y="532" font-size="19" opacity=".75">// works on more than my machine</text>
           </g>
-          <path d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z"
-                fill="none" stroke="#000" stroke-opacity=".28" stroke-width="1.5" stroke-linejoin="round"/>
-        </g>
-        <g id="print" font-family="'Kode Mono', ui-monospace, Consolas, monospace" text-anchor="middle" fill="#f2f2f2">
-          <g id="printDots"></g>
-          <text x="208" y="126" font-size="15" font-weight="600">{Tech: Europe}</text>
-          <text x="200" y="198" font-size="58" font-weight="700">SHIP</text>
-          <text x="200" y="256" font-size="58" font-weight="700">IT_</text>
-          <text x="200" y="288" font-size="10" opacity=".75">// works on more than my machine</text>
-        </g>
-      </svg>
+        </svg>
+        <img class="shade" src="shirt-shade.webp" width="840" height="804" alt="">
+      </div>
     </div>
 
-    <section>
+    <section class="info">
+      <div class="eyebrow" id="bfBadge">● Black Friday · −50%</div>
       <h1>Ship It Shirt</h1>
-      <div class="meta">100% organic cotton · unisex fit · ships from Europe</div>
-      <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span><span class="off">−50%</span></div>
+      <div class="meta">100% organic cotton · unisex fit</div>
+      <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span></div>
       <div class="meta" id="bfMeta">Black Friday price · ends tonight</div>
-      <div class="buy">
-        <div class="qty"><button id="minus" aria-label="less">−</button><span id="qty">1</span><button id="plus" aria-label="more">+</button></div>
-        <button class="btn" id="addBtn">Buy now ↗</button>
-      </div>
-      <blockquote>For everyone who pushes to prod on a Friday and still sleeps well. Heavyweight cotton, soft print, zero merge conflicts.</blockquote>
 
-      <div class="sec"><h2>Color</h2><small id="colorName">Midnight</small></div>
-      <div class="table" id="colors">
-        <button class="row on" data-c="#15181c" data-n="Midnight" data-light="0"><span class="sw" style="background:#15181c"></span><span>Midnight</span><span class="hex">#15181c</span><span class="check">✓</span></button>
-        <button class="row" data-c="#f4f4f2" data-n="Paper" data-light="1"><span class="sw" style="background:#f4f4f2"></span><span>Paper</span><span class="hex">#f4f4f2</span><span class="check">✓</span></button>
-        <button class="row" data-c="#1f7a45" data-n="Terminal Green" data-light="0"><span class="sw" style="background:#1f7a45"></span><span>Terminal Green</span><span class="hex">#1f7a45</span><span class="check">✓</span></button>
-        <button class="row" data-c="#2f6bff" data-n="Electric Blue" data-light="0"><span class="sw" style="background:#2f6bff"></span><span>Electric Blue</span><span class="hex">#2f6bff</span><span class="check">✓</span></button>
-        <button class="row" data-c="#e0313f" data-n="Signal Red" data-light="0"><span class="sw" style="background:#e0313f"></span><span>Signal Red</span><span class="hex">#e0313f</span><span class="check">✓</span></button>
+      <div class="opt"><span class="k">size</span>
+        <span id="sizes"><button class="size">S</button><button class="size on">M</button><button class="size">L</button><button class="size">XL</button><button class="size">XXL</button></span>
+      </div>
+      <div class="opt"><span class="k">qty</span>
+        <span class="qty"><button id="minus" aria-label="less">−</button><span id="qty">1</span><button id="plus" aria-label="more">+</button></span>
       </div>
 
-      <div class="sec"><h2>Size</h2><small>unisex fit</small></div>
-      <div class="sizes" id="sizes">
-        <button class="size">S</button><button class="size on">M</button><button class="size">L</button><button class="size">XL</button><button class="size">XXL</button>
-      </div>
+      <button class="buybox" id="addBtn" aria-label="Buy now">+------------------------------+
+|  &gt; Buy now                   |
++------------------------------+</button>
     </section>
   </div>
 
-  <hr class="dashed">
-  <div class="sec"><h2>Details</h2><small>shirt.yaml</small></div>
-  <div class="table">
-    <div class="row"><span class="k">material</span><span>100% organic cotton, 220 g/m²</span><span></span></div>
-    <div class="row"><span class="k">fit</span><span>unisex, made for long hack nights</span><span></span></div>
-    <div class="row"><span class="k">shipping</span><span>2–3 days across Europe</span><span></span></div>
-    <div class="row"><span class="k">returns</span><span>30 days, no stack traces</span><span></span></div>
-    <div class="row"><span class="k">bugs</span><span>0</span><span class="tag">allegedly</span></div>
+  <div class="divider">shirt.yaml</div>
+  <div class="specs">
+    <div class="spec"><span class="k">material</span><span class="dots"></span><span>100% organic cotton, 220 g/m²</span></div>
+    <div class="spec"><span class="k">fit</span><span class="dots"></span><span>unisex, made for long hack nights</span></div>
+    <div class="spec"><span class="k">shipping</span><span class="dots"></span><span>2–3 days across Europe</span></div>
+    <div class="spec"><span class="k">returns</span><span class="dots"></span><span>30 days, no stack traces</span></div>
+    <div class="spec"><span class="k">bugs</span><span class="dots"></span><span>0 <span class="tag">// allegedly</span></span></div>
   </div>
 </main>
+
+<footer><a href="#">Imprint</a><a href="#">Terms &amp; Conditions</a><a href="#">Returns</a></footer>
+
+<pre class="bgascii" id="bgAscii" aria-hidden="true"></pre>
 
 <div class="modal" id="modal"><div class="box" id="box"></div></div>
 
@@ -240,7 +220,7 @@ const BASE_PRICE = 29.0;
 const CHECKOUT_TIMEOUT_MS = 3000;
 
 /* ---------- state ---------- */
-const state = { cart: [], color: { c: "#15181c", n: "Midnight" }, size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
+const state = { cart: [], color: "Black", size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
 const $ = (id) => document.getElementById(id);
 const eur = (v) => v.toFixed(2).replace(".", ",") + " €";
 const unitPrice = () => state.blackFriday ? BASE_PRICE / 2 : BASE_PRICE;
@@ -257,19 +237,9 @@ function dotRing(g, cx, cy, r, dot, n = 12) {
   }).join("");
 }
 dotRing($("logoDots"), 10, 10, 7.5, 1.3);
-dotRing($("printDots"), 133, 121, 7, 1.25);
+dotRing($("printDots"), 302, 237, 12.5, 2.3);
 
 /* ---------- product options ---------- */
-function setColor(b) {
-  document.querySelectorAll("#colors .row").forEach(x => x.classList.toggle("on", x === b));
-  state.color = { c: b.dataset.c, n: b.dataset.n };
-  const light = b.dataset.light === "1";
-  $("colorName").textContent = b.dataset.n;
-  $("shirtBody").setAttribute("fill", b.dataset.c);
-  $("print").setAttribute("fill", light ? "#111114" : "#f2f2f2");
-  logInfo("color", state.color);
-}
-$("colors").addEventListener("click", (e) => { const b = e.target.closest(".row"); if (b) setColor(b); });
 $("sizes").addEventListener("click", (e) => {
   const b = e.target.closest(".size"); if (!b) return;
   document.querySelectorAll("#sizes .size").forEach(x => x.classList.toggle("on", x === b));
@@ -280,7 +250,7 @@ $("plus").onclick = () => { state.qty = Math.min(9, state.qty + 1); $("qty").tex
 
 /* ---------- checkout ---------- */
 $("addBtn").onclick = () => {
-  state.cart = [{ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty }];
+  state.cart = [{ name: "Ship It Shirt", color: state.color, size: state.size, qty: state.qty }];
   logInfo("buy now", state.cart[0]);
   runCheckout();
 };
@@ -300,7 +270,7 @@ async function runCheckout() {
   const secs = ((performance.now() - t0) / 1000).toFixed(2);
   logInfo("checkout result", { secs, res });
   if (!res.ok) { showCheckoutError(res); return; }
-  $("box").innerHTML = `<div class="ok-icon">✓</div><h2>Order confirmed</h2>
+  $("box").innerHTML = `<div class="ok-icon">[ ✓ ]</div><h2>Order confirmed</h2>
     <div class="order">${res.order_id} · ${secs}s</div>
     <div class="hint">Your shirt is on its way.</div>
     <div class="actions"><button class="ghost" onclick="closeModal()">Keep shopping</button></div>`;
@@ -309,12 +279,10 @@ async function runCheckout() {
 
 /** Show the checkout error dialog (selection is kept so the user can retry). */
 function showCheckoutError(res) {
-  $("box").innerHTML = `<div class="err-icon">!</div><h2>Checkout failed</h2>
-    <div class="err-code">Error ${res.code} · ${res.title}</div>
-    <div class="hint">We couldn't complete your order. Your card was not charged.<br>Please try again in a moment.</div>
-    <div class="req">request_id: ${res.request_id}</div>
+  $("box").innerHTML = `<div class="err-icon">[ ! ]</div><h2>Checkout failed</h2>
+    <div class="err-code">${res.code} · ${res.title}</div>
     <div class="actions"><button class="btn" onclick="runCheckout()">Try again</button>
-    <button class="ghost" onclick="closeModal()">Back to shop</button></div>`;
+    <button class="ghost" onclick="closeModal()">Back</button></div>`;
 }
 function closeModal() { $("modal").classList.remove("on"); }
 
@@ -352,7 +320,6 @@ function setLive(on) {
 }
 function renderPrice() {
   $("priceNow").textContent = eur(unitPrice());
-  $("addBtn").textContent = `Buy now – ${eur(unitPrice())} ↗`;
   $("bfMeta").style.display = state.blackFriday ? "" : "none";
 }
 function setBlackFriday(on) {
@@ -379,6 +346,25 @@ $("resetBtn").onclick = async () => { state.mockIncident = true; await post("/ap
 $("demoToggle").onclick = () => $("demo").classList.toggle("on");
 document.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "d" && !e.target.closest("input")) $("demo").classList.toggle("on"); });
 $("apiInfo").textContent = "api: " + API;
+
+/* ---------- background ASCII skyline (decoration only) ---------- */
+function drawBgAscii() {
+  const pre = $("bgAscii"), cw = 5.4, ch = 9, chars = " .:-=+*#%@";
+  const cols = Math.ceil(innerWidth / cw), rows = Math.ceil(Math.min(innerHeight * 0.45, 340) / ch);
+  let out = "";
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c / cols, edge = Math.pow(Math.abs(x - 0.5) * 2, 1.5);
+      const wave = 0.6 + 0.25 * Math.sin(c * 0.07) + 0.15 * Math.sin(c * 0.23 + 1.3);
+      const d = (0.2 + 0.8 * edge) * wave - (1 - r / rows);
+      out += d <= 0 || Math.random() > 0.8 ? " " : chars[Math.min(chars.length - 1, 1 + Math.floor(d * 16 * Math.random()))];
+    }
+    out += "\n";
+  }
+  pre.textContent = out;
+}
+let bgTimer; addEventListener("resize", () => { clearTimeout(bgTimer); bgTimer = setTimeout(drawBgAscii, 150); });
+drawBgAscii();
 
 /* ---------- init ---------- */
 renderPrice(); poll(); setInterval(poll, 3000);
