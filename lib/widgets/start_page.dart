@@ -122,11 +122,15 @@ class _ProviderTile extends StatelessWidget {
       ),
       child: Row(children: [
         Container(
-          width: 32,
-          height: 32,
+          width: 40,
+          height: 40,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: p.color.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.md)),
-          child: Dot(color: p.color, size: 10),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: ProviderLogo(provider: id, size: 24),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -245,7 +249,7 @@ class _IncidentCard extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 6),
                 child: Tooltip(
                   message: providerInfo(p).name,
-                  child: Dot(color: providerInfo(p).color, size: 9),
+                  child: ProviderLogo(provider: p, size: 16),
                 ),
               ),
           ]),

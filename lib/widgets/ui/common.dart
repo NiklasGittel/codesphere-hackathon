@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/ui_block.dart';
 import '../../theme.dart';
@@ -19,6 +20,42 @@ ProviderInfo providerInfo(String? id) => switch (id?.toLowerCase()) {
       'gemini-decisions' => const ProviderInfo('Gemini Decisions', Color(0xFF0B57D0)),
       _ => ProviderInfo(id ?? 'Unknown', AppColors.mutedForeground),
     };
+
+/// Official provider logo from `assets/logos/<id>.png`; falls back to the
+/// provider's colour dot. Only requests files that are actually bundled, so
+/// missing logos don't produce 404 errors.
+class ProviderLogo extends StatelessWidget {
+  const ProviderLogo({super.key, required this.provider, this.size = 20});
+  final String provider;
+  final double size;
+
+  static Future<Set<String>>? _bundled;
+  static Future<Set<String>> _assets() => _bundled ??= AssetManifest.loadFromAssetBundle(rootBundle)
+      .then((m) => m.listAssets().toSet())
+      .catchError((Object _) => <String>{});
+
+  @override
+  Widget build(BuildContext context) {
+    final path = 'assets/logos/${provider.toLowerCase()}.png';
+    final fallback = SizedBox(
+      width: size,
+      height: size,
+      child: Center(child: Dot(color: providerInfo(provider).color, size: size * 0.45)),
+    );
+    return FutureBuilder<Set<String>>(
+      future: _assets(),
+      builder: (context, snap) {
+        if (!(snap.data?.contains(path) ?? false)) return fallback;
+        return Image.asset(path,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, error, stack) => fallback);
+      },
+    );
+  }
+}
 
 class ProviderBadge extends StatelessWidget {
   const ProviderBadge({super.key, required this.provider});
