@@ -3,15 +3,12 @@
   shop/index.html - "Tech Europe Merch" demo shop (single file, no build step).
 
   Purpose: the customer-facing part of the AI SRE demo. A visitor buys the
-  "Ship It" coder shirt. On a normal day checkout takes ~0.3s; during
-  "Black Friday" (incident started in the backend) checkout fails after 3s
-  with a 504, until the AI SRE agent fixes the infrastructure.
+  "Ship It" shirt. On a normal day checkout takes ~0.3s; during "Black Friday"
+  (incident started in the backend) checkout fails after 3s with a 504, until
+  the AI SRE agent fixes the infrastructure.
 
-  Product stage: a 3D studio (Three.js). Each colorway in the bar at the
-  bottom of the stage is a robot model wearing that shirt color. Picking a
-  colorway: the current model waves and walks off, the new one steps out of
-  its card, walks to the center and dances. Model: RobotExpressive from the
-  three.js examples (CC0); if it cannot be loaded, a procedural figure is used.
+  Static page in the {Tech: Europe} look (Kode Mono, black/white, dashed rules,
+  table cards). The shirt is a flat SVG that is recolored per colorway.
 
   Backend: POST /api/checkout, POST /api/incident/start, POST /api/reset,
   GET /api/infra/state (see backend/README.md).
@@ -25,263 +22,207 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tech Europe Merch – Ship It Shirt</title>
+<title>Ship It Shirt – {Tech: Europe} Merch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0b0d10; --panel:#12161b; --line:#232a33; --text:#e8edf2; --muted:#8a96a3;
-    --accent:#7cf29a; --accent2:#5ab8ff; --warn:#ffcc4d; --bad:#ff5d6c; --bf:#ff2e63;
-    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Consolas, monospace;
-    --sans: Inter, "Segoe UI", system-ui, sans-serif;
+    --bg:#fafafa; --card:#ffffff; --ink:#0b0b0c; --muted:#6b6b70; --faint:#9a9aa0; --line:#e6e6e8;
+    --red:#e5262d; --mono:"Kode Mono", ui-monospace, Consolas, monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;
-       background-image:radial-gradient(circle at 80% -10%,rgba(124,242,154,.08),transparent 40%),
-       linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
-       background-size:auto,32px 32px,32px 32px}
-  button{font:inherit;cursor:pointer}
-  .bf-banner{display:none;background:#0f1a14;color:var(--accent);text-align:center;font-family:var(--mono);
-       font-size:12px;padding:8px;letter-spacing:.08em;border-bottom:1px solid rgba(124,242,154,.2)}
-  body.bf .bf-banner{display:block}
-  header{display:flex;align-items:center;justify-content:space-between;padding:20px 40px;border-bottom:1px solid var(--line)}
-  .logo{font-family:var(--mono);font-size:20px;font-weight:700}
-  .logo .b{color:var(--accent)} .logo .k{color:var(--accent2)}
-  nav{display:flex;gap:28px;color:var(--muted);font-size:14px}
-  .cart-btn{background:none;border:1px solid var(--line);color:var(--text);padding:8px 14px;border-radius:8px;font-family:var(--mono)}
-  .cart-btn b{color:var(--accent)}
+  body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:14px;line-height:1.55;min-height:100vh}
+  button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+  a{color:inherit}
 
-  main{max-width:1380px;margin:0 auto;padding:32px 40px 56px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:44px;align-items:start}
-  main > *{min-width:0}
+  .top{display:flex;align-items:center;gap:10px;padding:24px 40px}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:14px}
+  .brand svg{width:20px;height:20px}
+  .top .sub{color:var(--faint)}
 
-  /* ---------- 3D stage ---------- */
-  .stage{position:relative;height:clamp(520px,calc(100vh - 150px),780px);border:1px solid var(--line);border-radius:20px;overflow:hidden;
-       background:
-         radial-gradient(ellipse 55% 60% at 50% 0%,rgba(255,255,255,.07),transparent 70%),
-         radial-gradient(ellipse 70% 45% at 50% 100%,rgba(124,242,154,.06),transparent 70%),
-         linear-gradient(#0e1216,#0b0d10 70%)}
-  #scene3d{position:absolute;inset:0}
-  #scene3d canvas{display:block;width:100%;height:100%}
-  .stage .tag{position:absolute;top:18px;left:18px;font-family:var(--mono);font-size:12px;color:var(--accent);
-       border:1px solid rgba(124,242,154,.35);padding:4px 8px;border-radius:6px;background:rgba(11,13,16,.6);z-index:2}
-  .now{position:absolute;top:18px;right:18px;font-family:var(--mono);font-size:12px;color:var(--muted);z-index:2;
-       display:flex;align-items:center;gap:8px;background:rgba(11,13,16,.6);padding:4px 8px;border-radius:6px}
-  .now b{color:var(--text);font-weight:600}
-  .now .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1.2s steps(2) infinite}
-  @keyframes blink{50%{opacity:.25}}
-  .load{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);font-family:var(--mono);font-size:13px;color:var(--muted);z-index:2;
-       text-align:center;transition:opacity .4s}
-  .load .bar{width:180px;height:3px;background:var(--line);border-radius:2px;margin:10px auto 0;overflow:hidden}
-  .load .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
-  .stage.ready .load{opacity:0;pointer-events:none}
-  #shirt{display:none;position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:min(56%,380px);height:auto;
-       filter:drop-shadow(0 30px 40px rgba(0,0,0,.55))}
-  .stage.no3d #shirt{display:block} .stage.no3d .load{display:none}
+  .wrap{max-width:1040px;margin:0 auto;padding:24px 40px 80px}
+  .back{display:inline-block;color:var(--muted);text-decoration:none;font-size:12px;margin-bottom:20px}
+  .back:hover{color:var(--ink)}
+  .badges{display:flex;gap:8px;margin-bottom:14px}
+  .badge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:999px;border:1px solid var(--ink);line-height:1.4}
+  .badge.red{background:var(--red);border-color:var(--red);color:#fff}
+  body:not(.bf) #bfBadge{display:none}
 
-  /* product bar with colorways */
-  .rail{position:absolute;left:0;right:0;bottom:0;z-index:3;overflow-x:auto;scrollbar-width:none;padding:28px 16px 16px;
-       background:linear-gradient(transparent,rgba(11,13,16,.85) 55%)}
-  .rail::-webkit-scrollbar{display:none}
-  .rail-in{display:flex;gap:10px;width:max-content;margin:0 auto}
-  .card{width:104px;flex-shrink:0;padding:7px 7px 8px;border:1px solid var(--line);border-radius:12px;background:rgba(14,18,22,.82);
-       backdrop-filter:blur(8px);color:var(--text);font-family:var(--mono);font-size:11px;text-align:left;position:relative;
-       transition:transform .2s,border-color .2s,box-shadow .2s}
-  .card:hover{transform:translateY(-3px);border-color:#34404b}
-  .card.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,242,154,.12);transform:translateY(-5px)}
-  .card .pv{display:grid;place-items:center;height:70px;border-radius:8px;margin-bottom:7px;overflow:hidden;position:relative;
-       background:radial-gradient(circle at 50% 65%,color-mix(in srgb,var(--c) 70%,transparent),transparent 72%),#090b0e}
-  .card .pv svg{width:40px;height:40px}
-  .card .pv img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .3s}
-  .card .pv.has-img img{opacity:1} .card .pv.has-img svg{display:none}
-  .card .nm{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .card .hx{display:block;color:var(--muted);font-size:10px;margin-top:2px}
-  .card.on .nm{color:var(--accent)}
-  .card.emit .pv::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent,rgba(124,242,154,.55));animation:emit .7s ease-out forwards}
-  @keyframes emit{from{opacity:1;transform:translateY(40%)}to{opacity:0;transform:translateY(-60%)}}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start}
+  .photo{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:36px 28px;aspect-ratio:1/1.05;display:grid;place-items:center}
+  .photo svg{width:100%;height:auto;max-width:420px}
 
-  /* ---------- product info ---------- */
-  .info{position:sticky;top:24px}
-  .crumbs{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:14px}
-  h1{font-size:42px;line-height:1.05;letter-spacing:-.02em}
-  h1 code{font-family:var(--mono);color:var(--accent)}
-  .sub{color:var(--muted);margin:14px 0 22px;line-height:1.6}
-  .price{display:flex;align-items:baseline;gap:12px;margin-bottom:26px;font-family:var(--mono)}
-  .price .now{font-size:30px;font-weight:700}
-  .price .old{color:var(--muted);text-decoration:line-through;display:none}
-  .price .off{display:none;border:1px solid rgba(124,242,154,.4);color:var(--accent);font-size:12px;padding:3px 8px;border-radius:5px}
-  body.bf .price .old, body.bf .price .off{display:inline-block}
-  .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:var(--mono)}
-  .label b{color:var(--text);text-transform:none;letter-spacing:0;font-weight:600}
-  .pick{display:flex;align-items:center;gap:10px;margin-bottom:24px;font-family:var(--mono);font-size:12px;color:var(--muted)}
-  .pick .sw{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;transition:background .3s}
-  .opts{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap}
-  .opt{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:9px;font-family:var(--mono);min-width:54px}
-  .opt.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px rgba(124,242,154,.12)}
-  .row{display:flex;gap:12px;align-items:center}
-  .qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .qty button{background:var(--panel);border:0;color:var(--text);width:40px;height:48px;font-size:18px}
-  .qty span{width:40px;text-align:center;font-family:var(--mono)}
-  .primary{flex:1;height:50px;border:0;border-radius:10px;background:var(--accent);color:#06210f;font-weight:700;font-size:15px;
-       transition:transform .1s}
-  .primary:active{transform:scale(.98)} .primary:disabled{opacity:.5;cursor:default}
-  .term{margin-top:22px;font-family:var(--mono);font-size:13px;color:var(--muted);background:#090b0e;border:1px solid var(--line);
-       border-radius:10px;padding:14px 16px;line-height:1.7}
-  .term .p{color:var(--accent)} .term .c{color:var(--accent2)}
-  .feats{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;color:var(--muted)}
-  .feats div{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:rgba(18,22,27,.6)}
-  .feats b{color:var(--text);display:block;margin-bottom:3px;font-family:var(--mono);font-size:13px}
-  /* drawer */
-  .shade{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:.2s;z-index:10}
-  .shade.on{opacity:1;pointer-events:auto}
-  .drawer{position:fixed;top:0;right:0;height:100%;width:400px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);
-       transform:translateX(100%);transition:.25s;z-index:11;display:flex;flex-direction:column}
-  .drawer.on{transform:none}
-  .drawer h3{padding:22px 24px;border-bottom:1px solid var(--line);font-family:var(--mono);display:flex;justify-content:space-between}
-  .drawer h3 button{background:none;border:0;color:var(--muted);font-size:20px}
-  .items{flex:1;overflow:auto;padding:12px 24px}
-  .item{display:flex;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
-  .item .thumb{width:56px;height:56px;border-radius:10px;background:#090b0e;display:grid;place-items:center;font-family:var(--mono);color:var(--accent);font-size:11px}
-  .item .meta{flex:1;font-size:14px} .item .meta small{color:var(--muted);display:block;font-family:var(--mono);font-size:12px;margin-top:3px}
-  .item .rm{background:none;border:0;color:var(--muted)}
-  .empty{color:var(--muted);text-align:center;padding:40px 0;font-family:var(--mono);font-size:13px}
-  .foot{padding:20px 24px;border-top:1px solid var(--line)}
-  .total{display:flex;justify-content:space-between;font-family:var(--mono);margin-bottom:14px}
-  .primary.full{width:100%}
+  h1{font-size:40px;line-height:1.08;font-weight:600;letter-spacing:-.01em;margin-bottom:14px}
+  .meta{color:var(--muted);font-size:13px}
+  .price{display:flex;align-items:baseline;gap:12px;margin:18px 0 6px}
+  .price .now{font-size:26px;font-weight:600}
+  .price .old{color:var(--faint);text-decoration:line-through}
+  .price .off{font-size:11px;border:1px solid var(--ink);border-radius:999px;padding:1px 8px}
+  body:not(.bf) .price .old, body:not(.bf) .price .off{display:none}
+  blockquote{border-left:1px solid var(--ink);padding:2px 0 2px 18px;margin:22px 0 28px;color:#2a2a2e}
+
+  .sec{display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 10px}
+  .sec h2{font-size:20px;font-weight:500}
+  .sec small{color:var(--faint);font-size:11px}
+  .table{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .row{display:grid;grid-template-columns:120px 1fr auto;gap:16px;align-items:center;width:100%;text-align:left;padding:13px 22px;border-top:1px solid var(--line)}
+  .row:first-child{border-top:0}
+  .row .k{color:var(--muted)}
+  .tag{font-size:9px;letter-spacing:.06em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:999px;padding:2px 8px}
+  #colors .row{grid-template-columns:22px 1fr auto auto}
+  #colors .row:hover{background:#f6f6f7}
+  #colors .sw{width:18px;height:18px;border-radius:50%;border:1px solid rgba(0,0,0,.18)}
+  #colors .hex{color:var(--faint);font-size:12px}
+  #colors .check{width:14px;text-align:right;visibility:hidden}
+  #colors .row.on .check{visibility:visible}
+
+  .sizes{display:flex;gap:8px;flex-wrap:wrap}
+  .size{min-width:52px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+  .size.on{border-color:var(--ink);background:var(--ink);color:#fff}
+
+  .buy{display:flex;gap:12px;margin-top:22px}
+  .qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  .qty button{width:40px;height:50px;font-size:16px}
+  .qty span{width:28px;text-align:center}
+  .btn{flex:1;height:50px;border-radius:12px;background:var(--ink);color:#fff;font-weight:600}
+  .btn:disabled{opacity:.5;cursor:default}
+
+  hr.dashed{border:0;border-top:1px dashed #cfcfd3;margin:56px 0 8px}
+
   /* checkout modal */
-  .modal{position:fixed;inset:0;display:none;place-items:center;z-index:20;background:rgba(0,0,0,.7)}
+  .modal{position:fixed;inset:0;display:none;place-items:center;z-index:20;background:rgba(250,250,250,.75);backdrop-filter:blur(2px)}
   .modal.on{display:grid}
-  .box{width:440px;max-width:92vw;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;text-align:center}
-  .spinner{width:72px;height:72px;border-radius:50%;border:5px solid var(--line);border-top-color:var(--accent);margin:0 auto 20px;animation:spin .8s linear infinite}
+  .box{width:420px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px;text-align:center;
+       box-shadow:0 20px 50px rgba(0,0,0,.08)}
+  .box h2{font-size:20px;font-weight:600;margin-bottom:6px}
+  .spinner{width:44px;height:44px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ink);margin:0 auto 18px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .hint{color:var(--muted);font-size:14px;min-height:20px;font-family:var(--mono)}
-  .ok{font-size:46px} .order{font-family:var(--mono);color:var(--accent);margin:8px 0 18px}
-  .ghost{background:none;border:1px solid var(--line);color:var(--text);padding:10px 18px;border-radius:9px;margin-top:16px}
-  .err-icon{width:64px;height:64px;border-radius:50%;margin:0 auto 16px;display:grid;place-items:center;font-size:34px;font-weight:800;
-       color:var(--bad);border:3px solid var(--bad);background:rgba(255,93,108,.08)}
-  .err-code{font-family:var(--mono);color:var(--bad);margin:8px 0 14px;font-size:14px}
-  .req{font-family:var(--mono);color:var(--muted);font-size:11px;margin-top:12px;opacity:.7}
-  .err-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
-  .err-actions .primary{flex:0 0 auto;padding:0 22px;height:42px}
-  .err-actions .ghost{margin-top:0}
-  .shake{animation:shake .45s}
-  @keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
-  /* ---- Black Friday look (subtle) ---- */
-  .bf-kicker{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.12em;margin-bottom:14px;display:inline-flex;
-       align-items:center;gap:8px}
-  .bf-kicker::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
-  body:not(.bf) .bf-kicker{display:none}
-  .bf-info{display:none;gap:18px;margin:-10px 0 26px;font-family:var(--mono);font-size:12px;color:var(--muted)}
-  body.bf .bf-info{display:flex}
-  .bf-info b{color:var(--text);font-weight:600}
-  canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:30}
+  .hint{color:var(--muted);font-size:13px;min-height:20px}
+  .err-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;font-weight:700;color:#fff;background:var(--red)}
+  .err-code{color:var(--red);margin:4px 0 12px;font-size:13px}
+  .ok-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;color:#fff;background:var(--ink)}
+  .order{margin:4px 0 12px;font-size:13px}
+  .req{color:var(--faint);font-size:11px;margin-top:10px}
+  .actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
+  .actions .btn{flex:0 0 auto;height:42px;padding:0 20px}
+  .ghost{height:42px;padding:0 18px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+
   /* demo controls */
-  .demo-toggle{position:fixed;right:16px;bottom:16px;width:38px;height:38px;border-radius:50%;background:var(--panel);
+  .demo-toggle{position:fixed;right:16px;bottom:16px;width:36px;height:36px;border-radius:50%;background:var(--card);
        border:1px solid var(--line);color:var(--muted);z-index:15}
-  .demo{position:fixed;right:16px;bottom:64px;width:270px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
-       padding:14px;z-index:15;display:none;font-family:var(--mono);font-size:12px}
+  .demo{position:fixed;right:16px;bottom:62px;width:260px;background:var(--card);border:1px solid var(--line);border-radius:14px;
+       padding:14px;z-index:15;display:none;font-size:12px;box-shadow:0 12px 30px rgba(0,0,0,.08)}
   .demo.on{display:block}
-  .demo .t{color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between}
-  .demo button{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1px solid var(--line);background:#090b0e;color:var(--text);font-family:var(--mono);font-size:12px}
-  .demo .bfb{border-color:var(--bf);color:var(--bf)}
-  .demo .api{color:var(--muted);margin-top:10px;word-break:break-all}
-  .mode{padding:2px 6px;border-radius:4px;font-size:10px}
-  .mode.live{background:rgba(124,242,154,.15);color:var(--accent)} .mode.mock{background:rgba(255,204,77,.15);color:var(--warn)}
-  @media(max-width:980px){
-    main{grid-template-columns:1fr;padding:16px 16px 48px;gap:28px}
-    nav{display:none} header{padding:14px 16px}
-    .stage{height:clamp(440px,68vh,620px)}
-    .info{position:static}
-    h1{font-size:34px}
-  }
-  @media(max-width:520px){
-    .card{width:84px} .card .pv{height:58px}
-    .feats{grid-template-columns:1fr}
-    .now{display:none}
+  .demo .t{color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .demo button{width:100%;margin-top:8px;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+  .demo .bfb{border-color:var(--red);color:var(--red)}
+  .demo .api{color:var(--faint);margin-top:10px;word-break:break-all}
+  .mode{padding:1px 8px;border-radius:999px;font-size:10px;border:1px solid currentColor}
+  .mode.live{color:#0a7a3a} .mode.mock{color:#b26a00}
+
+  @media(max-width:860px){
+    .top{padding:16px}
+    .wrap{padding:8px 16px 64px}
+    .grid{grid-template-columns:1fr;gap:28px}
+    h1{font-size:32px}
+    .row{grid-template-columns:96px 1fr auto;padding:12px 16px}
   }
 </style>
 </head>
 <body class="bf">
-<div class="bf-banner">black friday — 50% off all merch — ends tonight</div>
 
-<header>
-  <div class="logo"><span class="b">&gt;</span> tech_europe<span class="k">/</span>merch<span class="b">_</span></div>
-  <nav><span>Shirts</span><span>Hoodies</span><span>Stickers</span><span>About</span></nav>
-  <button class="cart-btn" id="cartBtn" style="display:none">cart[<b id="cartCount">0</b>]</button>
+<header class="top">
+  <a class="brand" href="#" aria-label="{Tech: Europe} merch">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><g fill="currentColor" id="logoDots"></g></svg>
+    <span>{Tech: Europe}</span>
+  </a>
+  <span class="sub">/ merch</span>
 </header>
 
-<main>
-  <section class="stage" id="stage">
-    <div id="scene3d"></div>
-    <span class="tag">// new drop · live on stage</span>
-    <div class="now"><span class="dot"></span>on stage: <b id="nowName">Midnight</b></div>
-    <div class="load" id="loadHint">booting stage…<div class="bar"><i id="loadBar"></i></div></div>
-    <!-- fallback if WebGL / three.js is unavailable -->
-    <svg id="shirt" viewBox="0 0 400 420" aria-label="Ship It Shirt">
-      <path id="shirtBody" d="M120 30 L160 18 Q200 48 240 18 L280 30 L370 80 L340 150 L300 132 L300 400 Q200 412 100 400 L100 132 L60 150 L30 80 Z"
-            fill="#15181c" stroke="#2b333c" stroke-width="2"/>
-      <path d="M160 18 Q200 60 240 18" fill="none" stroke="#2b333c" stroke-width="3"/>
-      <g id="print" font-family="ui-monospace, Consolas, monospace" text-anchor="middle">
-        <text x="200" y="150" font-size="13" fill="#5ab8ff">$ git commit -m "europe"</text>
-        <text x="200" y="215" font-size="58" font-weight="800" fill="#7cf29a">SHIP</text>
-        <text x="200" y="272" font-size="58" font-weight="800" fill="#7cf29a">IT_</text>
-        <text x="200" y="310" font-size="12" fill="#8a96a3">// works on more than my machine</text>
-      </g>
-    </svg>
-    <div class="rail" id="rail"><div class="rail-in" id="colors">
-      <button class="card on" data-c="#15181c" data-n="Midnight" data-light="0" aria-pressed="true"></button>
-      <button class="card" data-c="#e9ecef" data-n="Paper" data-light="1" aria-pressed="false"></button>
-      <button class="card" data-c="#1f7a45" data-n="Terminal Green" data-light="0" aria-pressed="false"></button>
-      <button class="card" data-c="#2f6bff" data-n="Electric Blue" data-light="0" aria-pressed="false"></button>
-      <button class="card" data-c="#e0313f" data-n="Signal Red" data-light="0" aria-pressed="false"></button>
-    </div></div>
-  </section>
+<main class="wrap">
+  <a class="back" href="#">← All merch</a>
+  <div class="badges"><span class="badge red" id="bfBadge">● Black Friday</span><span class="badge">New drop</span></div>
 
-  <section class="info">
-    <div class="bf-kicker">BLACK FRIDAY · −50%</div>
-    <div class="crumbs">shop / shirts / ship-it</div>
-    <h1>The <code>Ship&nbsp;It</code><br>Coder Shirt</h1>
-    <p class="sub">For everyone who pushes to prod on a Friday and still sleeps well. Heavyweight organic cotton, terminal-green print, zero merge conflicts.</p>
-    <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span><span class="off">-50%</span></div>
-    <div class="bf-info"><span>ends in <b id="cd">05:59:59</b></span><span><b id="viewers">214</b> viewing now</span></div>
-
-    <div class="label">color · <b id="colorName">Midnight</b></div>
-    <div class="pick"><span class="sw" id="colorSw" style="background:#15181c"></span>pick a colorway in the stage bar — it walks on stage</div>
-
-    <div class="label">size</div>
-    <div class="opts" id="sizes">
-      <button class="opt">S</button><button class="opt on">M</button><button class="opt">L</button><button class="opt">XL</button><button class="opt">XXL</button>
+  <div class="grid">
+    <div class="photo">
+      <svg id="shirt" viewBox="0 0 400 440" aria-label="Ship It Shirt">
+        <defs>
+          <linearGradient id="shade" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stop-color="#000" stop-opacity=".16"/><stop offset=".22" stop-color="#000" stop-opacity="0"/>
+            <stop offset=".78" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/>
+          </linearGradient>
+          <linearGradient id="light" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g id="tee">
+          <path id="shirtBody" d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z"
+                fill="#15181c"/>
+          <path d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z" fill="url(#shade)"/>
+          <path d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z" fill="url(#light)"/>
+          <g fill="none" stroke="#000" stroke-opacity=".22" stroke-linecap="round">
+            <path d="M166 20 Q200 60 234 20" stroke-width="7" stroke-opacity=".28"/>       <!-- collar rib -->
+            <path d="M100 140 Q104 120 112 66" stroke-width="1.5"/>                        <!-- sleeve seams -->
+            <path d="M300 140 Q296 120 288 66" stroke-width="1.5"/>
+            <path d="M72 140 L56 132" stroke-width="1.5" stroke-dasharray="3 3"/>          <!-- cuff stitching -->
+            <path d="M328 140 L344 132" stroke-width="1.5" stroke-dasharray="3 3"/>
+            <path d="M104 400 Q200 410 296 400" stroke-width="1.5" stroke-dasharray="3 3"/> <!-- hem stitching -->
+            <path d="M150 300 Q160 360 150 410" stroke-width="1" stroke-opacity=".08"/>    <!-- soft folds -->
+            <path d="M250 300 Q240 360 252 410" stroke-width="1" stroke-opacity=".08"/>
+          </g>
+          <path d="M128 34 L166 20 Q200 52 234 20 L272 34 L362 84 Q352 122 336 156 L300 140 Q296 270 304 412 Q200 424 96 412 Q104 270 100 140 L64 156 Q48 122 38 84 Z"
+                fill="none" stroke="#000" stroke-opacity=".28" stroke-width="1.5" stroke-linejoin="round"/>
+        </g>
+        <g id="print" font-family="'Kode Mono', ui-monospace, Consolas, monospace" text-anchor="middle" fill="#f2f2f2">
+          <g id="printDots"></g>
+          <text x="208" y="126" font-size="15" font-weight="600">{Tech: Europe}</text>
+          <text x="200" y="198" font-size="58" font-weight="700">SHIP</text>
+          <text x="200" y="256" font-size="58" font-weight="700">IT_</text>
+          <text x="200" y="288" font-size="10" opacity=".75">// works on more than my machine</text>
+        </g>
+      </svg>
     </div>
 
-    <div class="row">
-      <div class="qty"><button id="minus">−</button><span id="qty">1</span><button id="plus">+</button></div>
-      <button class="primary" id="addBtn">Buy now →</button>
-    </div>
+    <section>
+      <h1>Ship It Shirt</h1>
+      <div class="meta">100% organic cotton · unisex fit · ships from Europe</div>
+      <div class="price"><span class="now" id="priceNow">29,00 €</span><span class="old">29,00 €</span><span class="off">−50%</span></div>
+      <div class="meta" id="bfMeta">Black Friday price · ends tonight</div>
+      <div class="buy">
+        <div class="qty"><button id="minus" aria-label="less">−</button><span id="qty">1</span><button id="plus" aria-label="more">+</button></div>
+        <button class="btn" id="addBtn">Buy now ↗</button>
+      </div>
+      <blockquote>For everyone who pushes to prod on a Friday and still sleeps well. Heavyweight cotton, soft print, zero merge conflicts.</blockquote>
 
-    <div class="term">
-      <div><span class="p">~/merch $</span> cat shirt.yaml</div>
-      <div><span class="c">material:</span> 100% organic cotton</div>
-      <div><span class="c">fit:</span> unisex, made for long hack nights</div>
-      <div><span class="c">bugs:</span> 0 <span style="opacity:.6"># allegedly</span></div>
-    </div>
-    <div class="feats">
-      <div><b>⚡ fast shipping</b>2–3 days across Europe</div>
-      <div><b>↺ 30-day returns</b>no questions, no stack traces</div>
-      <div><b>🌱 organic</b>GOTS certified cotton</div>
-      <div><b>🔒 secure checkout</b>99.99% uptime*</div>
-    </div>
-  </section>
+      <div class="sec"><h2>Color</h2><small id="colorName">Midnight</small></div>
+      <div class="table" id="colors">
+        <button class="row on" data-c="#15181c" data-n="Midnight" data-light="0"><span class="sw" style="background:#15181c"></span><span>Midnight</span><span class="hex">#15181c</span><span class="check">✓</span></button>
+        <button class="row" data-c="#f4f4f2" data-n="Paper" data-light="1"><span class="sw" style="background:#f4f4f2"></span><span>Paper</span><span class="hex">#f4f4f2</span><span class="check">✓</span></button>
+        <button class="row" data-c="#1f7a45" data-n="Terminal Green" data-light="0"><span class="sw" style="background:#1f7a45"></span><span>Terminal Green</span><span class="hex">#1f7a45</span><span class="check">✓</span></button>
+        <button class="row" data-c="#2f6bff" data-n="Electric Blue" data-light="0"><span class="sw" style="background:#2f6bff"></span><span>Electric Blue</span><span class="hex">#2f6bff</span><span class="check">✓</span></button>
+        <button class="row" data-c="#e0313f" data-n="Signal Red" data-light="0"><span class="sw" style="background:#e0313f"></span><span>Signal Red</span><span class="hex">#e0313f</span><span class="check">✓</span></button>
+      </div>
+
+      <div class="sec"><h2>Size</h2><small>unisex fit</small></div>
+      <div class="sizes" id="sizes">
+        <button class="size">S</button><button class="size on">M</button><button class="size">L</button><button class="size">XL</button><button class="size">XXL</button>
+      </div>
+    </section>
+  </div>
+
+  <hr class="dashed">
+  <div class="sec"><h2>Details</h2><small>shirt.yaml</small></div>
+  <div class="table">
+    <div class="row"><span class="k">material</span><span>100% organic cotton, 220 g/m²</span><span></span></div>
+    <div class="row"><span class="k">fit</span><span>unisex, made for long hack nights</span><span></span></div>
+    <div class="row"><span class="k">shipping</span><span>2–3 days across Europe</span><span></span></div>
+    <div class="row"><span class="k">returns</span><span>30 days, no stack traces</span><span></span></div>
+    <div class="row"><span class="k">bugs</span><span>0</span><span class="tag">allegedly</span></div>
+  </div>
 </main>
 
-<div class="shade" id="shade"></div>
-<aside class="drawer" id="drawer">
-  <h3>cart.json <button id="closeCart">×</button></h3>
-  <div class="items" id="items"></div>
-  <div class="foot">
-    <div class="total"><span>total</span><span id="total">0,00 €</span></div>
-    <button class="primary full" id="checkoutBtn">Checkout →</button>
-  </div>
-</aside>
-
 <div class="modal" id="modal"><div class="box" id="box"></div></div>
-<canvas id="confetti"></canvas>
 
 <button class="demo-toggle" id="demoToggle" title="Demo controls (D)">⚙</button>
 <div class="demo" id="demo">
@@ -296,82 +237,57 @@
 const API = new URLSearchParams(location.search).get("api")
   || (location.protocol.startsWith("http") && location.port === "8080" ? location.origin : "http://localhost:8080");
 const BASE_PRICE = 29.0;
+const CHECKOUT_TIMEOUT_MS = 3000;
 
 /* ---------- state ---------- */
-const state = { cart: [], color: {c:"#15181c", n:"Midnight"}, size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
+const state = { cart: [], color: { c: "#15181c", n: "Midnight" }, size: "M", qty: 1, blackFriday: true, live: false, mockIncident: true };
 const $ = (id) => document.getElementById(id);
 const eur = (v) => v.toFixed(2).replace(".", ",") + " €";
 const unitPrice = () => state.blackFriday ? BASE_PRICE / 2 : BASE_PRICE;
+const sleep = (ms) => new Promise(ok => setTimeout(ok, ms));
 
 /** Log helper - all calls visible in the console for debugging. */
 function logInfo(msg, data) { console.info("[shop]", msg, data ?? ""); }
 
-/* ---------- colorway cards (product bar on the stage) ---------- */
-const TEE_ICON = `<svg viewBox="0 0 40 40"><path d="M13 6l4-2q3 3 6 0l4 2 9 5-3 7-4-2v19H11V16l-4 2-3-7z" fill="currentColor" stroke="rgba(255,255,255,.25)"/></svg>`;
-document.querySelectorAll("#colors .card").forEach(b => {
-  b.style.setProperty("--c", b.dataset.c);
-  b.innerHTML = `<span class="pv" style="color:${b.dataset.c}">${TEE_ICON}<img alt=""></span>
-    <span class="nm">${b.dataset.n}</span><span class="hx">${b.dataset.c}</span>`;
-});
-$("colors").addEventListener("click", (e) => {
-  const b = e.target.closest(".card"); if (!b || b.classList.contains("on")) return;
-  document.querySelectorAll("#colors .card").forEach(x => { x.classList.remove("on"); x.setAttribute("aria-pressed", "false"); });
-  b.classList.add("on"); b.setAttribute("aria-pressed", "true");
-  b.classList.remove("emit"); void b.offsetWidth; b.classList.add("emit");
-  const light = b.dataset.light === "1";
-  state.color = { c: b.dataset.c, n: b.dataset.n };
-  $("colorName").textContent = b.dataset.n; $("colorSw").style.background = b.dataset.c;
-  logInfo("colorway", state.color);
-  window.stageSelect?.(b);
-  // SVG fallback
-  $("shirtBody").setAttribute("fill", b.dataset.c);
-  $("print").querySelectorAll("text").forEach((t, i) => t.setAttribute("fill", light ? ["#1d6fb8","#0d8a3a","#0d8a3a","#555"][i] : ["#5ab8ff","#7cf29a","#7cf29a","#8a96a3"][i]));
-});
-// no 3D after a while (CDN/WebGL problem) -> show the flat SVG shirt
-setTimeout(() => { if (!window.stageSelect) $("stage").classList.add("no3d"); }, 8000);
+/* ---------- logo dots (header + print) ---------- */
+function dotRing(g, cx, cy, r, dot, n = 12) {
+  g.innerHTML = Array.from({ length: n }, (_, i) => {
+    const a = i / n * Math.PI * 2;
+    return `<circle cx="${(cx + Math.cos(a) * r).toFixed(2)}" cy="${(cy + Math.sin(a) * r).toFixed(2)}" r="${dot}"/>`;
+  }).join("");
+}
+dotRing($("logoDots"), 10, 10, 7.5, 1.3);
+dotRing($("printDots"), 133, 121, 7, 1.25);
 
+/* ---------- product options ---------- */
+function setColor(b) {
+  document.querySelectorAll("#colors .row").forEach(x => x.classList.toggle("on", x === b));
+  state.color = { c: b.dataset.c, n: b.dataset.n };
+  const light = b.dataset.light === "1";
+  $("colorName").textContent = b.dataset.n;
+  $("shirtBody").setAttribute("fill", b.dataset.c);
+  $("print").setAttribute("fill", light ? "#111114" : "#f2f2f2");
+  logInfo("color", state.color);
+}
+$("colors").addEventListener("click", (e) => { const b = e.target.closest(".row"); if (b) setColor(b); });
 $("sizes").addEventListener("click", (e) => {
-  const b = e.target.closest(".opt"); if (!b) return;
-  document.querySelectorAll("#sizes .opt").forEach(x => x.classList.remove("on")); b.classList.add("on");
+  const b = e.target.closest(".size"); if (!b) return;
+  document.querySelectorAll("#sizes .size").forEach(x => x.classList.toggle("on", x === b));
   state.size = b.textContent;
 });
 $("minus").onclick = () => { state.qty = Math.max(1, state.qty - 1); $("qty").textContent = state.qty; };
 $("plus").onclick = () => { state.qty = Math.min(9, state.qty + 1); $("qty").textContent = state.qty; };
 
-/* ---------- cart ---------- */
+/* ---------- checkout ---------- */
 $("addBtn").onclick = () => {
   state.cart = [{ name: "Ship It Shirt", color: state.color.n, size: state.size, qty: state.qty }];
   logInfo("buy now", state.cart[0]);
   runCheckout();
 };
-function renderCart() {
-  const n = state.cart.reduce((a, i) => a + i.qty, 0);
-  $("cartCount").textContent = n;
-  $("items").innerHTML = state.cart.length ? state.cart.map((i, k) => `
-    <div class="item"><div class="thumb">SHIP<br>IT_</div>
-      <div class="meta">${i.name}<small>${i.color} · ${i.size} · x${i.qty}</small></div>
-      <div style="font-family:var(--mono)">${eur(unitPrice() * i.qty)}</div>
-      <button class="rm" data-k="${k}">✕</button></div>`).join("")
-    : `<div class="empty">// cart is empty<br>git add shirt</div>`;
-  $("total").textContent = eur(unitPrice() * n);
-  $("checkoutBtn").disabled = !n;
-}
-$("items").addEventListener("click", (e) => { const b = e.target.closest(".rm"); if (b) { state.cart.splice(+b.dataset.k, 1); renderCart(); } });
-function openCart(on) { $("drawer").classList.toggle("on", on); $("shade").classList.toggle("on", on); }
-$("cartBtn").onclick = () => openCart(true);
-$("closeCart").onclick = $("shade").onclick = () => openCart(false);
 
-/* ---------- checkout ---------- */
-const CHECKOUT_TIMEOUT_MS = 3000;
-const sleep = (ms) => new Promise(ok => setTimeout(ok, ms));
-$("checkoutBtn").onclick = () => runCheckout();
-
-/** Run the checkout: long spinner, then success or a checkout error (e.g. 504 timeout). */
+/** Run the checkout: spinner, then success or a checkout error (e.g. 504 timeout). */
 async function runCheckout() {
-  openCart(false);
-  $("box").classList.remove("shake");
-  $("box").innerHTML = `<div class="spinner"></div><h2 style="margin-bottom:8px">Processing your order</h2>
-    <div class="hint" id="stepHint">contacting payment provider…</div>`;
+  $("box").innerHTML = `<div class="spinner"></div><h2>Processing your order</h2><div class="hint" id="stepHint">contacting payment provider…</div>`;
   $("modal").classList.add("on");
   const steps = ["contacting payment provider…", "reserving your size…", "confirming order…"];
   let i = 0;
@@ -384,21 +300,21 @@ async function runCheckout() {
   const secs = ((performance.now() - t0) / 1000).toFixed(2);
   logInfo("checkout result", { secs, res });
   if (!res.ok) { showCheckoutError(res); return; }
-  $("box").innerHTML = `<div class="ok">✓</div><h2>Order confirmed</h2>
+  $("box").innerHTML = `<div class="ok-icon">✓</div><h2>Order confirmed</h2>
     <div class="order">${res.order_id} · ${secs}s</div>
-    <div class="hint">your shirt is on its way 🚀</div><button class="ghost" onclick="closeModal()">keep shopping</button>`;
-  state.cart = []; renderCart(); confetti();
+    <div class="hint">Your shirt is on its way.</div>
+    <div class="actions"><button class="ghost" onclick="closeModal()">Keep shopping</button></div>`;
+  state.cart = [];
 }
 
-/** Show the checkout error dialog (cart is kept so the user can retry). */
+/** Show the checkout error dialog (selection is kept so the user can retry). */
 function showCheckoutError(res) {
   $("box").innerHTML = `<div class="err-icon">!</div><h2>Checkout failed</h2>
     <div class="err-code">Error ${res.code} · ${res.title}</div>
     <div class="hint">We couldn't complete your order. Your card was not charged.<br>Please try again in a moment.</div>
     <div class="req">request_id: ${res.request_id}</div>
-    <div class="err-actions"><button class="primary" onclick="runCheckout()">Try again</button>
+    <div class="actions"><button class="btn" onclick="runCheckout()">Try again</button>
     <button class="ghost" onclick="closeModal()">Back to shop</button></div>`;
-  void $("box").offsetWidth; $("box").classList.add("shake");
 }
 function closeModal() { $("modal").classList.remove("on"); }
 
@@ -434,13 +350,16 @@ function setLive(on) {
   $("mode").textContent = on ? "LIVE" : "MOCK";
   $("mode").className = "mode " + (on ? "live" : "mock");
 }
+function renderPrice() {
+  $("priceNow").textContent = eur(unitPrice());
+  $("addBtn").textContent = `Buy now – ${eur(unitPrice())} ↗`;
+  $("bfMeta").style.display = state.blackFriday ? "" : "none";
+}
 function setBlackFriday(on) {
   if (state.blackFriday === on) return;
   state.blackFriday = on;
   document.body.classList.toggle("bf", on);
-  $("priceNow").textContent = eur(unitPrice());
-  $("addBtn").textContent = on ? `Buy now – ${eur(unitPrice())} →` : "Buy now →";
-  renderCart();
+  renderPrice();
 }
 /** Poll backend state: detects LIVE/MOCK and whether Black Friday is running. */
 async function poll() {
@@ -461,502 +380,8 @@ $("demoToggle").onclick = () => $("demo").classList.toggle("on");
 document.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "d" && !e.target.closest("input")) $("demo").classList.toggle("on"); });
 $("apiInfo").textContent = "api: " + API;
 
-/* ---------- confetti ---------- */
-function confetti() {
-  const c = $("confetti"), x = c.getContext("2d");
-  c.width = innerWidth; c.height = innerHeight;
-  const cols = ["#7cf29a", "#5ab8ff", "#ffcc4d", "#ff5d6c", "#ffffff"];
-  const ps = Array.from({ length: 160 }, () => ({ x: innerWidth / 2, y: innerHeight / 2, vx: (Math.random() - .5) * 16,
-    vy: Math.random() * -14 - 4, s: 4 + Math.random() * 5, c: cols[Math.random() * cols.length | 0], r: Math.random() * 6 }));
-  let f = 0;
-  (function frame() {
-    x.clearRect(0, 0, c.width, c.height);
-    ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .35; p.r += .1;
-      x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * .6); x.restore(); });
-    if (f++ < 150) requestAnimationFrame(frame); else x.clearRect(0, 0, c.width, c.height);
-  })();
-}
-
 /* ---------- init ---------- */
-renderCart(); poll(); setInterval(poll, 3000);
-$("priceNow").textContent = eur(unitPrice()); $("addBtn").textContent = `Buy now – ${eur(unitPrice())} →`;
-/* Black Friday countdown + live viewers (pure decoration) */
-let cdLeft = 5 * 3600 + 59 * 60 + 59;
-setInterval(() => {
-  cdLeft = Math.max(0, cdLeft - 1);
-  const h = String(Math.floor(cdLeft / 3600)).padStart(2, "0"), m = String(Math.floor(cdLeft % 3600 / 60)).padStart(2, "0"), sec = String(cdLeft % 60).padStart(2, "0");
-  $("cd").textContent = `${h}:${m}:${sec}`;
-  if (Math.random() < .3) $("viewers").textContent = 190 + Math.floor(Math.random() * 60);
-}, 1000);
+renderPrice(); poll(); setInterval(poll, 3000);
 </script>
-<script type="importmap">
-{ "imports": {
-  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-} }
-</script>
-<script type="module">
-/*
- * 3D product stage (Three.js).
- * Dark studio: floor with soft spotlight shadow, green/blue rim lights, faint grid.
- * Each colorway = one figure (RobotExpressive, body tinted in the shirt color,
- * "SHIP IT_" print on the chest). Selecting a colorway: the current figure waves
- * and walks off, the new one grows out of its card, walks to the center and dances.
- * Figures are small state machines (spawn -> walkIn -> turn -> dance -> wave -> walkOut),
- * so fast clicking never breaks the sequence.
- * Public hook: window.stageSelect(cardElement) - called by the colorway cards.
- */
-import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
-import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
-
-const MODEL_URLS = [
-  "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
-  "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
-];
-const FIG_H = 2.0;          // figure height in scene units
-const WALK_SPEED = 1.05;    // units/s, matches the Walking clip at timeScale 1
-const EXIT_TIMESCALE = 1.35;
-const FADE = 0.35;          // animation crossfade in seconds
-const SPAWN_S = 0.7;        // grow-out-of-the-card duration
-const WAVE_S = 1.35;        // how long the leaving figure waves
-const CENTER = new THREE.Vector3(0, 0, 0);
-
-const stageEl = document.getElementById("stage");
-const host = document.getElementById("scene3d");
-const $ = (id) => document.getElementById(id);
-
-// ---------- renderer / scene ----------
-let renderer;
-try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-} catch (e) {
-  console.warn("[stage] WebGL unavailable, using SVG fallback", e);
-  stageEl.classList.add("no3d");
-  throw e;
-}
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-host.appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x0b0d10, 9, 19);
-const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 60);
-camera.position.set(0, 1.6, 8);
-const lookAt = new THREE.Vector3(0, 1.0, 0);
-
-function addLights(target) {
-  target.add(new THREE.HemisphereLight(0xc8d8ff, 0x0b0d10, 0.7));
-  const fill = new THREE.DirectionalLight(0xffffff, 1.3); fill.position.set(-3, 2.5, 6); target.add(fill);
-  const rim = new THREE.DirectionalLight(0x7cf29a, 2.2); rim.position.set(-5, 3, -4); target.add(rim);
-  const rim2 = new THREE.DirectionalLight(0x5ab8ff, 1.4); rim2.position.set(5, 2.5, -3.5); target.add(rim2);
-}
-addLights(scene);
-const spot = new THREE.SpotLight(0xffffff, 140, 20, 0.45, 0.75, 1.6);
-spot.position.set(0.6, 8, 3.2);
-spot.castShadow = true;
-spot.shadow.mapSize.set(1024, 1024);
-spot.shadow.bias = -0.0004;
-spot.shadow.normalBias = 0.02;
-scene.add(spot, spot.target);
-
-// ---------- floor ----------
-function radialTexture(stops, size = 256) {
-  const c = document.createElement("canvas"); c.width = c.height = size;
-  const g = c.getContext("2d"), grd = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  stops.forEach(([o, col]) => grd.addColorStop(o, col));
-  g.fillStyle = grd; g.fillRect(0, 0, size, size);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
-const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 64),
-  new THREE.MeshStandardMaterial({ color: 0x14191e, roughness: 0.82, metalness: 0.0 }));
-floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-const grid = new THREE.GridHelper(28, 56, 0x7cf29a, 0x7cf29a);
-grid.material.transparent = true; grid.material.opacity = 0.06; grid.material.depthWrite = false; grid.position.y = 0.002;
-scene.add(grid);
-const pool = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({
-  map: radialTexture([[0, "rgba(255,255,255,.16)"], [0.5, "rgba(255,255,255,.05)"], [1, "rgba(255,255,255,0)"]]),
-  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-pool.rotation.x = -Math.PI / 2; pool.position.y = 0.004; scene.add(pool);
-const ring = new THREE.Mesh(new THREE.RingGeometry(1.12, 1.15, 128),
-  new THREE.MeshBasicMaterial({ color: 0x7cf29a, transparent: true, opacity: 0.25, depthWrite: false }));
-ring.rotation.x = -Math.PI / 2; ring.position.y = 0.006; scene.add(ring);
-
-// ---------- chest print ----------
-function printCanvas(light) {
-  const c = document.createElement("canvas"); c.width = c.height = 1024;
-  const g = c.getContext("2d"); g.textAlign = "center";
-  const green = light ? "#0d8a3a" : "#7cf29a", grey = light ? "#555" : "#a3adb8", ink = light ? "#15181c" : "#f2f5f8";
-  const mono = 'ui-monospace, "JetBrains Mono", Consolas, monospace';
-  // {Tech: Europe} logo: dotted ring + outlined monospace wordmark
-  g.save(); g.translate(512, 175); g.font = `800 92px ${mono}`;
-  const word = "{Tech: Europe}", ww = g.measureText(word).width, ringR = 40, gap = 26;
-  const x0 = -(ww + ringR * 2 + gap) / 2;
-  g.fillStyle = ink;
-  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2;
-    g.beginPath(); g.arc(x0 + ringR + Math.cos(a) * ringR, Math.sin(a) * ringR, 6.5, 0, Math.PI * 2); g.fill(); }
-  g.textAlign = "left"; g.textBaseline = "middle"; g.lineJoin = "round";
-  const tx = x0 + ringR * 2 + gap;
-  g.globalAlpha = 0.28; g.fillText(word, tx, 4); g.globalAlpha = 1;
-  g.strokeStyle = ink; g.lineWidth = 5; g.strokeText(word, tx, 4);
-  g.restore();
-  g.fillStyle = green; g.font = `800 250px ${mono}`; g.fillText("SHIP", 512, 500); g.fillText("IT_", 512, 730);
-  g.fillStyle = grey; g.font = `600 46px ${mono}`; g.fillText("// works on more than my machine", 512, 830);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-  return t;
-}
-const PRINT_MATS = [false, true].map(light => { const map = printCanvas(light); return new THREE.MeshStandardMaterial({
-  map, transparent: true, roughness: 0.8, depthWrite: false,
-  // slight glow so the print stays readable on dark bodies (terminal look)
-  emissiveMap: map, emissive: 0xffffff, emissiveIntensity: light ? 0.12 : 0.6,
-  polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }); });
-const printMat = (light) => PRINT_MATS[light ? 1 : 0];
-/** Plane slightly bent around the vertical axis so it hugs a rounded chest. */
-function printGeometry(size, curve) {
-  const g = new THREE.PlaneGeometry(size, size, 24, 1), p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) p.setZ(i, -curve * p.getX(i) ** 2);
-  g.computeVertexNormals(); return g;
-}
-
-// ---------- t-shirt ----------
-const TEE_HEM = 0.74;        // hem / cuff rib is a bit darker than the shirt
-const teeMaterial = (hex) => new THREE.MeshStandardMaterial({ color: hex, roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide });
-/** Vertex colors: 1 for fabric, TEE_HEM for vertices where isRib(y) is true. */
-function ribColors(g, isRib) {
-  const p = g.attributes.position, c = new Float32Array(p.count * 3);
-  for (let i = 0; i < p.count; i++) c.fill(isRib(p.getY(i)) ? TEE_HEM : 1, i * 3, i * 3 + 3);
-  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
-}
-/** Short sleeve: open tube from shoulder down the upper arm, with a darker cuff. */
-function sleeveGeometry(rTop, rBottom, h) {
-  const g = new THREE.CylinderGeometry(rTop, rBottom, h, 24, 6, true);
-  ribColors(g, y => y < -h / 2 + 0.06);
-  return g;
-}
-/** Place a sleeve along the bone segment from -> to (world space, bind pose). */
-function placeSleeve(mesh, from, to, offset) {
-  const dir = new THREE.Vector3().subVectors(to, from).normalize();
-  mesh.position.copy(from).addScaledVector(dir, offset);
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().negate());
-}
-
-// ---------- figure: RobotExpressive ----------
-let proto = null;            // loaded gltf (with t-shirt + print attached)
-let protoScale = 1;
-let robotMat = null;         // neutral metal body, shared by all figures
-const wp = (o) => o.getWorldPosition(new THREE.Vector3());
-function preparePrototype(gltf) {
-  const s = gltf.scene;
-  s.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(s);
-  protoScale = FIG_H / (box.max.y - box.min.y);
-  s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-
-  // shirt body: the torso meshes, merged, smoothed and inflated a little (world space, bind pose)
-  const torso = s.getObjectByName("Torso");
-  const parts = ["Torso_2", "Torso_3"].map(n => s.getObjectByName(n)).filter(Boolean);
-  let g = mergeGeometries(parts.map(m => {
-    const c = new THREE.BufferGeometry();
-    c.setAttribute("position", m.geometry.attributes.position.clone()); c.setIndex(m.geometry.index.clone());
-    return c.applyMatrix4(m.matrixWorld);
-  }));
-  g = mergeVertices(g, 1e-3); g.computeVertexNormals();
-  const p = g.attributes.position, n = g.attributes.normal;
-  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + n.getX(i) * 0.06, p.getY(i) + n.getY(i) * 0.03, p.getZ(i) + n.getZ(i) * 0.06);
-  g.computeVertexNormals();
-  ribColors(g, y => y < 1.42);
-  const tee = new THREE.Mesh(g, teeMaterial(0xffffff));
-  tee.name = "teeBody"; tee.castShadow = true; tee.frustumCulled = false;
-  s.add(tee); tee.updateMatrixWorld(true);
-  parts.forEach(m => (m.visible = false));       // the shirt replaces the visible torso shell
-
-  // chest print: raycast onto the front of the shirt and sit just above it
-  const hit = new THREE.Raycaster(new THREE.Vector3(0, 2.0, 5), new THREE.Vector3(0, 0, -1)).intersectObject(tee)[0];
-  const plane = new THREE.Mesh(printGeometry(0.98, 0.06), PRINT_MATS[0]);
-  plane.name = "shirtPrint";
-  if (hit) {
-    const nrm = hit.face.normal.clone();
-    plane.position.copy(hit.point).addScaledVector(nrm, 0.012);
-    plane.lookAt(plane.position.clone().add(nrm));
-  } else plane.position.set(0, 2.0, 0.78);
-  s.add(plane);
-  torso.attach(tee); torso.attach(plane);
-
-  // sleeves on the upper arms
-  for (const side of ["L", "R"]) {
-    const up = s.getObjectByName("UpperArm" + side), low = s.getObjectByName("LowerArm" + side);
-    if (!up || !low) continue;
-    const sl = new THREE.Mesh(sleeveGeometry(0.27, 0.3, 0.46), teeMaterial(0xffffff));
-    sl.name = "teeSleeve"; sl.castShadow = true; sl.frustumCulled = false;
-    placeSleeve(sl, wp(up), wp(low), 0.1);
-    s.add(sl); sl.updateMatrixWorld(true); up.attach(sl);
-  }
-
-  s.traverse(o => { if (o.isMesh && o.material.name === "Main" && !robotMat) {
-    robotMat = o.material.clone(); robotMat.color.set(0x8b949e); robotMat.metalness = 0.35; robotMat.roughness = 0.42; } });
-  proto = gltf;
-}
-function makeRobot(hex, light) {
-  const model = SkeletonUtils.clone(proto.scene);
-  model.scale.setScalar(protoScale);
-  const bodyMat = teeMaterial(hex);
-  model.traverse(o => {
-    if (!o.isMesh) return;
-    if (o.name === "shirtPrint") o.material = printMat(light);
-    else if (o.name.startsWith("tee")) o.material = bodyMat;
-    else if (o.material.name === "Main") o.material = robotMat;
-  });
-  const root = new THREE.Group(); root.add(model);
-  const mixer = new THREE.AnimationMixer(model);
-  const actions = {};
-  for (const clip of proto.animations) {
-    const a = mixer.clipAction(clip);
-    if (["Wave", "Jump", "ThumbsUp"].includes(clip.name)) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
-    actions[clip.name] = a;
-  }
-  let cur = null;
-  return {
-    root,
-    play(name, ts = 1) {
-      const next = actions[name]; if (!next) return;
-      if (next === cur) { next.setEffectiveTimeScale(ts); return; }
-      if (cur) cur.fadeOut(FADE);
-      next.reset().setEffectiveTimeScale(ts).setEffectiveWeight(1).fadeIn(FADE).play();
-      cur = next;
-    },
-    update(dt) { mixer.update(dt); },
-    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); bodyMat.dispose(); },
-  };
-}
-
-// ---------- figure: procedural fallback (if the model cannot be loaded) ----------
-function makeFallback(hex, light) {
-  const body = new THREE.MeshStandardMaterial({ color: 0x8b949e, roughness: 0.42, metalness: 0.35 });
-  const grey = new THREE.MeshStandardMaterial({ color: 0x9aa3ab, roughness: 0.5 });
-  const tee = teeMaterial(hex);
-  const root = new THREE.Group(), model = new THREE.Group(); root.add(model);
-  const part = (geo, mat, x, y, z, parent) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
-  const limb = (x, y, len, r, mat, parent) => { const p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p);
-    part(new THREE.CapsuleGeometry(r, len, 4, 12), mat, 0, -len / 2 - r, 0, p); return p; };
-  const torso = new THREE.Group(); torso.position.y = 0.95; model.add(torso);
-  part(new THREE.CapsuleGeometry(0.34, 0.42, 6, 18), body, 0, 0.32, 0, torso);
-  part(new THREE.SphereGeometry(0.28, 24, 16), grey, 0, 0.95, 0, torso);
-  const eye = new THREE.MeshBasicMaterial({ color: 0x7cf29a });
-  part(new THREE.SphereGeometry(0.045, 10, 8), eye, 0.1, 0.98, 0.25, torso);
-  part(new THREE.SphereGeometry(0.045, 10, 8), eye, -0.1, 0.98, 0.25, torso);
-  const teeGeo = new THREE.CylinderGeometry(0.38, 0.42, 0.7, 28, 6, true); ribColors(teeGeo, y => y < -0.29);
-  part(teeGeo, tee, 0, 0.3, 0, torso);
-  const pr = part(printGeometry(0.44, 0.9), printMat(light), 0, 0.34, 0.405, torso); pr.castShadow = false;
-  const armL = limb(0.45, 0.6, 0.42, 0.085, body, torso), armR = limb(-0.45, 0.6, 0.42, 0.085, body, torso);
-  for (const arm of [armL, armR]) part(sleeveGeometry(0.13, 0.15, 0.26), tee, 0, -0.1, 0, arm);
-  const legL = limb(0.16, 0.95, 0.7, 0.11, grey, model), legR = limb(-0.16, 0.95, 0.7, 0.11, grey, model);
-  let mode = "Idle", t = 0;
-  return {
-    root,
-    play(name) { if (name !== mode) { mode = name; t = 0; } },
-    update(dt) {
-      t += dt;
-      for (const o of [armL, armR, legL, legR, torso]) o.rotation.set(0, 0, 0);
-      torso.position.y = 0.95;
-      const s = Math.sin(t * 6.5);
-      if (mode === "Walking" || mode === "Jump") {
-        legL.rotation.x = s * 0.6; legR.rotation.x = -s * 0.6; armL.rotation.x = -s * 0.5; armR.rotation.x = s * 0.5;
-        torso.position.y += Math.abs(Math.cos(t * 6.5)) * 0.04;
-      } else if (mode === "Dance") {
-        torso.rotation.z = Math.sin(t * 4) * 0.15; torso.position.y += Math.abs(Math.sin(t * 4)) * 0.08;
-        armL.rotation.z = 2.4 + Math.sin(t * 8) * 0.4; armR.rotation.z = -2.4 + Math.sin(t * 8 + 1) * 0.4;
-        legL.rotation.z = Math.sin(t * 4) * 0.12; legR.rotation.z = Math.sin(t * 4) * 0.12;
-      } else if (mode === "Wave") {
-        armR.rotation.z = -2.6 + Math.sin(t * 10) * 0.35; torso.position.y += Math.sin(t * 2) * 0.015;
-      } else {
-        torso.position.y += Math.sin(t * 2) * 0.015; armL.rotation.z = 0.08; armR.rotation.z = -0.08;
-      }
-    },
-    dispose() { tee.dispose(); },
-  };
-}
-const makeFigure = (hex, light) => proto ? makeRobot(hex, light) : makeFallback(hex, light);
-
-// ---------- actors on stage ----------
-const actors = [];
-let current = null;
-const ease = (k) => 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;   // easeOutBack
-const yawTo = (from, to, k) => { let d = to - from; d = Math.atan2(Math.sin(d), Math.cos(d)); return from + d * k; };
-const raycaster = new THREE.Raycaster(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-
-/** Floor point "under" a DOM element (the colorway card), so figures step out of their card. */
-function floorPointFor(el) {
-  const r = el.getBoundingClientRect(), c = renderer.domElement.getBoundingClientRect();
-  const ndc = new THREE.Vector2(((r.left + r.width / 2 - c.left) / c.width) * 2 - 1,
-                               -((r.top + r.height * 0.35 - c.top) / c.height) * 2 + 1);
-  raycaster.setFromCamera(ndc, camera);
-  const p = new THREE.Vector3();
-  if (!raycaster.ray.intersectPlane(groundPlane, p)) p.set(0, 0, 3);
-  p.x = THREE.MathUtils.clamp(p.x, -4.2, 4.2); p.z = THREE.MathUtils.clamp(p.z, 0.8, 3.4);
-  return p;
-}
-
-function spawn(cardEl) {
-  const light = cardEl.dataset.light === "1";
-  const fig = makeFigure(cardEl.dataset.c, light);
-  const from = floorPointFor(cardEl);
-  fig.root.position.copy(from);
-  fig.root.rotation.y = Math.atan2(CENTER.x - from.x, CENTER.z - from.z);
-  fig.root.scale.setScalar(0.12);
-  fig.play("Jump");
-  scene.add(fig.root);
-  const a = { fig, mode: "spawn", t: 0, name: cardEl.dataset.n, exit: null };
-  actors.push(a);
-  return a;
-}
-function leave(a, side) {
-  a.exit = new THREE.Vector3(side * 7.5, 0, -2.2);
-  if (a.mode === "dance" || a.mode === "turn") { a.mode = "wave"; a.t = 0; a.fig.play("Wave"); }
-  else if (a.mode !== "walkOut" && a.mode !== "wave") { a.mode = "walkOut"; a.fig.play("Walking", EXIT_TIMESCALE); }
-}
-let lastSide = 1;
-function select(cardEl) {
-  const next = spawn(cardEl);
-  if (current) {
-    // leave towards the side away from the new figure
-    const side = Math.abs(next.fig.root.position.x) > 0.3 ? -Math.sign(next.fig.root.position.x) : (lastSide = -lastSide);
-    leave(current, side);
-  }
-  current = next;
-}
-function walkTowards(a, target, speed, dt) {
-  const p = a.fig.root.position, d = new THREE.Vector3().subVectors(target, p); d.y = 0;
-  const dist = d.length(), step = speed * dt;
-  if (dist > 1e-3) a.fig.root.rotation.y = yawTo(a.fig.root.rotation.y, Math.atan2(d.x, d.z), 1 - Math.exp(-dt * 8));
-  if (dist <= step) { p.copy(target); return true; }
-  p.addScaledVector(d.normalize(), step); return false;
-}
-function updateActors(dt) {
-  for (let i = actors.length - 1; i >= 0; i--) {
-    const a = actors[i], r = a.fig.root;
-    a.fig.update(dt); a.t += dt;
-    switch (a.mode) {
-      case "spawn": {
-        const k = Math.min(1, a.t / SPAWN_S);
-        r.scale.setScalar(0.12 + 0.88 * ease(k));
-        r.position.y = Math.sin(k * Math.PI) * 0.18;
-        if (k >= 1) { r.position.y = 0; r.scale.setScalar(1); a.mode = "walkIn"; a.fig.play("Walking"); }
-        break;
-      }
-      case "walkIn":
-        if (walkTowards(a, CENTER, WALK_SPEED, dt)) { a.mode = "turn"; a.t = 0; a.fig.play("Idle"); }
-        break;
-      case "turn":
-        r.rotation.y = yawTo(r.rotation.y, 0, 1 - Math.exp(-dt * 7));
-        if (Math.abs(Math.atan2(Math.sin(r.rotation.y), Math.cos(r.rotation.y))) < 0.04 || a.t > 1) {
-          a.mode = "dance"; a.fig.play("Dance"); $("nowName").textContent = a.name;
-        }
-        break;
-      case "dance": break;
-      case "wave":
-        r.rotation.y = yawTo(r.rotation.y, 0, 1 - Math.exp(-dt * 6));
-        if (a.t > WAVE_S) { a.mode = "walkOut"; a.fig.play("Walking", EXIT_TIMESCALE); }
-        break;
-      case "walkOut":
-        if (walkTowards(a, a.exit, WALK_SPEED * EXIT_TIMESCALE, dt)) {
-          scene.remove(r); a.fig.dispose(); actors.splice(i, 1);
-        }
-        break;
-    }
-  }
-}
-
-// ---------- camera: soft follow + pointer parallax ----------
-const pointer = new THREE.Vector2();
-stageEl.addEventListener("pointermove", (e) => {
-  const r = stageEl.getBoundingClientRect();
-  pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
-});
-stageEl.addEventListener("pointerleave", () => pointer.set(0, 0));
-const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
-function updateCamera(dt, t) {
-  const aspect = camera.aspect;
-  const focus = current ? current.fig.root.position : CENTER;
-  const dancing = current && current.mode === "dance";
-  // wide while figures walk, close-up on the shirt while dancing
-  let dist = dancing ? 4.1 : 7.4;
-  if (aspect < 1.15) dist *= Math.min(1.45, Math.pow(1.15 / aspect, 0.6));   // portrait: step back a bit
-  camGoal.set(Math.sin(t * 0.18) * (dancing ? 0.45 : 0.7) + focus.x * 0.35 + pointer.x * 0.4,
-              (dancing ? 1.05 : 1.6) - pointer.y * 0.15,
-              dist + focus.z * 0.25);
-  lookGoal.set(focus.x * 0.45, dancing ? 0.86 : 0.85, focus.z * 0.3);
-  const k = 1 - Math.exp(-dt * 1.8);
-  camera.position.lerp(camGoal, k); lookAt.lerp(lookGoal, k);
-  camera.lookAt(lookAt);
-  spot.target.position.lerp(new THREE.Vector3(focus.x, 0, focus.z), k * 1.5);
-  pool.position.x = spot.target.position.x; pool.position.z = spot.target.position.z;
-  ring.material.opacity = dancing ? 0.35 + 0.2 * Math.sin(t * 7.5) : 0.18;
-}
-
-// ---------- sizing / loop ----------
-function resize() {
-  const w = host.clientWidth, h = host.clientHeight;
-  if (!w || !h) return;
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h; camera.updateProjectionMatrix();
-}
-new ResizeObserver(resize).observe(host); resize();
-let visible = true;
-new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(stageEl);
-const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
-  if (!visible) return;
-  updateActors(dt); updateCamera(dt, t);
-  renderer.render(scene, camera);
-});
-
-// ---------- colorway thumbnails (rendered once with a small offscreen renderer) ----------
-function renderThumbnails() {
-  let r;
-  try { r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); } catch { return; }
-  r.setPixelRatio(1); r.setSize(208, 140, false);
-  r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
-  const s = new THREE.Scene(); addLights(s);
-  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(2, 3, 5); s.add(key);
-  const cam = new THREE.PerspectiveCamera(24, 208 / 140, 0.1, 30);
-  cam.position.set(0, 1.05, 3.6); cam.lookAt(0, 0.95, 0);   // upper body: the shirt fills the card
-  document.querySelectorAll("#colors .card").forEach(card => {
-    const f = makeFigure(card.dataset.c, card.dataset.light === "1");
-    f.play("Idle"); f.update(0.6); f.root.rotation.y = -0.3;
-    s.add(f.root); r.render(s, cam);
-    const pv = card.querySelector(".pv"); pv.querySelector("img").src = r.domElement.toDataURL("image/png"); pv.classList.add("has-img");
-    s.remove(f.root); f.dispose();
-  });
-  r.dispose(); r.forceContextLoss();
-}
-
-// ---------- boot ----------
-async function loadModel() {
-  const loader = new GLTFLoader();
-  for (const url of MODEL_URLS) {
-    try {
-      return await loader.loadAsync(url, (e) => { if (e.total) $("loadBar").style.width = (100 * e.loaded / e.total).toFixed(0) + "%"; });
-    } catch (e) { console.warn("[stage] model load failed:", url, e?.message || e); }
-  }
-  return null;
-}
-(async () => {
-  const gltf = await loadModel();
-  if (gltf) preparePrototype(gltf);
-  else console.warn("[stage] using procedural fallback figure");
-  renderThumbnails();
-  stageEl.classList.add("ready");
-  window.stageSelect = select;
-  if (new URLSearchParams(location.search).has("debug")) window.__stage = { actors, scene, camera, renderer };
-  select(document.querySelector("#colors .card.on") || document.querySelector("#colors .card"));
-})();
-</script>
-
 </body>
 </html>
