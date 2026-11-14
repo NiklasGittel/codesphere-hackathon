@@ -230,89 +230,104 @@ class InfraWorld {
   ToolResult latencyByRegion() {
     const regions = ['West Europe', 'Central Europe', 'North Europe', 'UK', 'US East', 'US West', 'Asia Pacific'];
     const before = [410.0, 395.0, 380.0, 430.0, 520.0, 610.0, 890.0];
-    final after = rolledBack
-        ? before
-        : const [1920.0, 1810.0, 1760.0, 1790.0, 305.0, 470.0, 1080.0];
+    const during = [1920.0, 1810.0, 1760.0, 1790.0, 305.0, 470.0, 1080.0];
+
+    // Hour 9 = 21:00 yesterday (deploy #482). After a rollback only the last
+    // two hours recover (22 = rollout in progress, 23 = now), like real data.
+    double valueAt(int r, int h) {
+      final double base;
+      if (h < 9) {
+        base = before[r];
+      } else if (rolledBack && h == 23) {
+        base = before[r];
+      } else if (rolledBack && h == 22) {
+        base = during[r] * 0.35 + before[r] * 0.65;
+      } else {
+        base = during[r];
+      }
+      return (base * (1 + 0.06 * math.sin(h * 1.7 + r))).roundToDouble();
+    }
+
     return ToolResult({
-      'metric': 'checkout p95 (ms) by customer region, before vs after 21:00',
+      'metric': 'checkout p95 (ms) by customer region, last 24 h',
       'regions': [
         for (var r = 0; r < regions.length; r++)
-          {'region': regions[r], 'before_ms': before[r], 'now_ms': after[r]},
+          {
+            'region': regions[r],
+            'before_incident_ms': before[r],
+            'during_incident_ms': during[r],
+            'now_ms': rolledBack ? before[r] : during[r],
+          },
       ],
       'eu_share_of_traffic_pct': 81,
       'slo_ms': 800,
+      if (rolledBack) 'note': 'rollback completed within the last hour; history still shows the incident from 21:00',
     }, detail: '7 regions × 24 h', blocks: {
       'region_heatmap': {
         'type': 'heatmap',
         'title': 'Checkout p95 by region',
-        'subtitle': 'Last 24 hours · hover a cell for details',
+        'subtitle': rolledBack
+            ? 'Last 24 hours · recovered after the rollback (right edge)'
+            : 'Last 24 hours · hover a cell for details',
         'source': 'AWS CloudWatch',
         'unit': 'ms',
         'threshold': 800,
         'x_labels': _hours,
         'y_labels': regions,
         'values': [
-          for (var r = 0; r < regions.length; r++)
-            [
-              for (var h = 0; h < 24; h++)
-                ((h < 9 ? before[r] : after[r]) * (1 + 0.06 * math.sin(h * 1.7 + r))).roundToDouble()
-            ]
+          for (var r = 0; r < regions.length; r++) [for (var h = 0; h < 24; h++) valueAt(r, h)]
         ],
       },
     });
   }
 
   ToolResult slowTrace() {
-    final call = rolledBack ? 31.0 : 274.0;
+    // The p95 sample of the last 24 h still comes from the incident window,
+    // even after the rollback. Current traces are reported in the summary.
+    const call = 274.0;
     final spans = [
-      {'name': 'POST /checkout', 'provider': 'codesphere', 'start': 0, 'duration': rolledBack ? 640 : 1920, 'depth': 0},
-      {'name': 'checkout-api.handle', 'provider': 'aws', 'start': 38, 'duration': rolledBack ? 560 : 1342, 'depth': 1},
+      {'name': 'POST /checkout', 'provider': 'codesphere', 'start': 0, 'duration': 1920, 'depth': 0},
+      {'name': 'checkout-api.handle', 'provider': 'aws', 'start': 38, 'duration': 1342, 'depth': 1},
       {'name': 'fraud-check', 'provider': 'aws', 'start': 52, 'duration': 96, 'depth': 2},
       for (var i = 0; i < 3; i++)
-        {'name': 'payment.authorize #${i + 1}', 'provider': 'gcp', 'start': 160 + i * (call + 6), 'duration': call, 'depth': 2, 'highlight': !rolledBack},
-      {'name': 'orders-db.insert', 'provider': 'azure', 'start': 160 + 3 * (call + 6), 'duration': rolledBack ? 120 : 214, 'depth': 2},
+        {'name': 'payment.authorize #${i + 1}', 'provider': 'gcp', 'start': 160 + i * (call + 6), 'duration': call, 'depth': 2, 'highlight': true},
+      {'name': 'orders-db.insert', 'provider': 'azure', 'start': 160 + 3 * (call + 6), 'duration': 214, 'depth': 2},
     ];
     return ToolResult({
-      'trace': 'representative slow checkout (>= p95), customer in Frankfurt',
-      'total_ms': rolledBack ? 640 : 1920,
+      'trace': 'representative slow checkout (>= p95 of the last 24 h), customer in Frankfurt',
+      'total_ms': 1920,
       'payment_authorize_calls': 3,
       'sequential': true,
       'per_call_ms': call,
       'per_call_ms_before_deploy_482': 31,
-      'network_waiting_ms': rolledBack ? 0 : 822,
-      'span_breakdown_ms': rolledBack
-          ? {'payment.authorize (3x)': 93, 'storefront render': 260, 'orders-db write': 120, 'checkout-api compute': 118, 'fraud-check': 96}
-          : {'payment.authorize (3x)': 822, 'TLS handshakes cross-region': 410, 'storefront render': 260, 'orders-db write': 214, 'checkout-api compute': 118, 'fraud-check': 96},
+      'network_waiting_ms': 822,
+      'span_breakdown_ms': {'payment.authorize (3x)': 822, 'TLS handshakes cross-region': 410, 'storefront render': 260, 'orders-db write': 214, 'checkout-api compute': 118, 'fraud-check': 96},
+      if (rolledBack)
+        'current_traces_after_rollback': {'total_ms_p95': 640, 'payment_authorize_per_call_ms': 31, 'network_waiting_ms': 93},
     }, detail: '1,284 slow traces sampled', blocks: {
       'slow_trace': {
         'type': 'waterfall',
         'title': 'POST /checkout',
-        'subtitle': 'Representative slow checkout · West Europe',
+        'subtitle': rolledBack
+            ? 'Slow checkout from before the rollback · West Europe'
+            : 'Representative slow checkout · West Europe',
         'source': 'Cloud Trace',
         'spans': spans,
       },
       'span_breakdown': {
         'type': 'bar_chart',
         'title': 'Where the time goes',
-        'subtitle': 'p95 checkout trace, broken down by span',
+        'subtitle': rolledBack ? 'p95 trace during the incident' : 'p95 checkout trace, broken down by span',
         'source': 'Cloud Trace',
         'unit': 'ms',
-        'bars': rolledBack
-            ? [
-                {'label': 'storefront render', 'value': 260},
-                {'label': 'orders-db write', 'value': 120},
-                {'label': 'checkout-api compute', 'value': 118},
-                {'label': 'fraud-check', 'value': 96},
-                {'label': 'payment.authorize ×3', 'value': 93},
-              ]
-            : [
-                {'label': 'payment.authorize ×3', 'sublabel': 'sequential · us-east1', 'value': 822, 'highlight': true},
-                {'label': 'TLS handshakes', 'sublabel': 'cross-region, not reused', 'value': 410, 'highlight': true},
-                {'label': 'storefront render', 'sublabel': 'codesphere · fra-1', 'value': 260},
-                {'label': 'orders-db write', 'sublabel': 'azure · westeurope', 'value': 214},
-                {'label': 'checkout-api compute', 'sublabel': 'aws · eu-central-1', 'value': 118},
-                {'label': 'fraud-check', 'sublabel': 'aws · eu-central-1', 'value': 96},
-              ],
+        'bars': [
+          {'label': 'payment.authorize ×3', 'sublabel': 'sequential · us-east1', 'value': 822, 'highlight': true},
+          {'label': 'TLS handshakes', 'sublabel': 'cross-region, not reused', 'value': 410, 'highlight': true},
+          {'label': 'storefront render', 'sublabel': 'codesphere · fra-1', 'value': 260},
+          {'label': 'orders-db write', 'sublabel': 'azure · westeurope', 'value': 214},
+          {'label': 'checkout-api compute', 'sublabel': 'aws · eu-central-1', 'value': 118},
+          {'label': 'fraud-check', 'sublabel': 'aws · eu-central-1', 'value': 96},
+        ],
       },
     });
   }
@@ -374,17 +389,22 @@ class InfraWorld {
           'cart': [12480, 12610],
           'shipping': [9860, 10020],
           'payment': [7940, 8310],
-          'confirmed': rolledBack ? [5010, 5240] : [4180, 5240],
+          'confirmed': [rolledBack ? 4260 : 4180, 5240],
         },
-        'payment_to_confirmed_rate_pct': rolledBack ? [63.1, 63.1] : [52.6, 63.1],
-        'completed_orders_change_pct': rolledBack ? -4.4 : -20.2,
+        'payment_to_confirmed_rate_pct_today': [rolledBack ? 53.7 : 52.6, 63.1],
+        'completed_orders_change_pct_today': rolledBack ? -18.7 : -20.2,
         'revenue_at_risk_eur_per_day': rolledBack ? 0 : 6300,
         'support_tickets_change_pct': 340,
+        if (rolledBack)
+          'since_rollback': {
+            'payment_to_confirmed_rate_pct': 62.8,
+            'note': 'conversion back to normal for new sessions; today\'s totals still include the incident hours',
+          },
       }, detail: 'storefront analytics', blocks: {
         'checkout_funnel': {
           'type': 'funnel',
           'title': 'Checkout funnel',
-          'subtitle': 'Today vs. last Saturday',
+          'subtitle': rolledBack ? 'Today vs. last Saturday · incident hours included' : 'Today vs. last Saturday',
           'source': 'Storefront analytics',
           'value_label': 'Today',
           'compare_label': 'Last week',
@@ -392,7 +412,7 @@ class InfraWorld {
             {'label': 'Cart', 'value': 12480, 'compare': 12610},
             {'label': 'Shipping details', 'value': 9860, 'compare': 10020},
             {'label': 'Payment', 'value': 7940, 'compare': 8310},
-            {'label': 'Order confirmed', 'value': rolledBack ? 5010 : 4180, 'compare': 5240},
+            {'label': 'Order confirmed', 'value': rolledBack ? 4260 : 4180, 'compare': 5240},
           ],
         },
       });

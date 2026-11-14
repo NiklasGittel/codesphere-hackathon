@@ -238,15 +238,19 @@ class BriefView extends StatelessWidget {
   const BriefView({super.key, required this.block});
   final BriefBlock block;
 
-  IconData _icon(String label) => switch (label.toLowerCase()) {
-        'what' => Icons.report_outlined,
-        'impact' => Icons.trending_down_rounded,
-        'cause' => Icons.search_rounded,
-        'fix' => Icons.build_outlined,
-        'effort' => Icons.schedule_rounded,
-        'savings' => Icons.savings_outlined,
-        _ => Icons.circle_outlined,
-      };
+  IconData _icon(String label) {
+    final l = label.toLowerCase();
+    bool has(String w) => l.contains(w);
+    if (has('what') || has('problem') || has('symptom')) return Icons.report_outlined;
+    if (has('cause') || has('why')) return Icons.search_rounded;
+    if (has('expected') || has('result') || has('outcome')) return Icons.trending_up_rounded;
+    if (has('impact') || has('business')) return Icons.trending_down_rounded;
+    if (has('fix') || has('action') || has('step')) return Icons.build_outlined;
+    if (has('risk')) return Icons.shield_outlined;
+    if (has('effort') || has('time') || has('eta')) return Icons.schedule_rounded;
+    if (has('saving') || has('cost')) return Icons.savings_outlined;
+    return Icons.circle_outlined;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -267,35 +271,48 @@ class BriefView extends StatelessWidget {
                   style: AppText.title.copyWith(
                       fontSize: 14.5, color: tinted ? s.fg : AppColors.foreground)),
             ),
-            if (block.badge != null) ShadBadge(label: block.badge!, color: tinted ? s.fg : null),
+            if (block.badge != null) ...[
+              const SizedBox(width: 12),
+              Flexible(child: ShadBadge(label: block.badge!, color: tinted ? s.fg : null)),
+            ],
           ]),
         ),
-        for (var i = 0; i < block.items.length; i++)
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
-            decoration: BoxDecoration(
-              border: Border(
-                  top: BorderSide(color: tinted ? s.border.withAlpha(140) : AppColors.border)),
-            ),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: SizedBox(
-                width: 92,
-                child: Row(children: [
-                  Icon(_icon(block.items[i].label), size: 14, color: AppColors.mutedForeground),
-                  const SizedBox(width: 6),
-                  Text(block.items[i].label.toUpperCase(),
-                      style: AppText.label.copyWith(fontSize: 10.5)),
+        LayoutBuilder(builder: (context, box) {
+          // Label column fits the longest label (within limits); long labels wrap.
+          final longest = block.items.fold<int>(0, (m, it) => it.label.length > m ? it.label.length : m);
+          final labelW = (34 + longest * 7.2).clamp(92.0, math.max(92.0, box.maxWidth * 0.32)).toDouble();
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < block.items.length; i++)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
+                decoration: BoxDecoration(
+                  border: Border(
+                      top: BorderSide(color: tinted ? s.border.withAlpha(140) : AppColors.border)),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(
+                    width: labelW,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3, right: 12),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Icon(_icon(block.items[i].label), size: 14, color: AppColors.mutedForeground),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(block.items[i].label.toUpperCase(),
+                              softWrap: true,
+                              style: AppText.label.copyWith(fontSize: 10.5, height: 1.35)),
+                        ),
+                      ]),
+                    ),
+                  ),
+                  Expanded(
+                    child: RichMarkdownText(block.items[i].text,
+                        style: AppText.body.copyWith(fontSize: 13.5, height: 1.5)),
+                  ),
                 ]),
               ),
-              ),
-              Expanded(
-                child: RichMarkdownText(block.items[i].text,
-                    style: AppText.body.copyWith(fontSize: 13.5, height: 1.5)),
-              ),
-            ]),
-          ),
+          ]);
+        }),
       ]),
     );
   }
