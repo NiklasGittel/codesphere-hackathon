@@ -50,7 +50,7 @@ app.include_router(live_gcp.router)
 def _start_sampler():
     """Start the background thread that records metric history."""
     threading.Thread(target=infra.sample_loop, daemon=True).start()
-    threading.Thread(target=live_gcp.probe_loop, daemon=True).start()
+    live_gcp.ensure_probe()
     log.info("started; agent mode=%s model=%s", config.AGENT_MODE, config.GEMINI_MODEL)
 
 

@@ -46,8 +46,8 @@ PROBE_TIMEOUT_S = float(os.getenv("LIVE_PROBE_TIMEOUT_S", "15"))
 # The shop checkout gives up on payment-svc after this (shop itself aborts at 8 s).
 PAYMENT_TIMEOUT_S = float(os.getenv("LIVE_PAYMENT_TIMEOUT_S", "7.5"))
 # Shop checkout calls the real payment-svc (only when live mode is on).
-CHECKOUT_USES_PAYMENT_SVC = ENABLED and os.getenv("LIVE_CHECKOUT_USES_PAYMENT_SVC", "true").lower() == "true"
 ENABLED = bool(PROJECT)
+CHECKOUT_USES_PAYMENT_SVC = ENABLED and os.getenv("LIVE_CHECKOUT_USES_PAYMENT_SVC", "true").lower() == "true"
 
 _API = "https://run.googleapis.com/v2"
 router = APIRouter(prefix="/api/live")
@@ -155,20 +155,40 @@ def _probe_once(url: str):
     return (time.time(), c["ms"], c["ok"], c["revision"])
 
 
+_probe_thread: threading.Thread | None = None
+_last_round = 0.0
+
+
+def ensure_probe() -> bool:
+    """Start the probe thread if it is not running (self-healing). Returns True if (re)started."""
+    global _probe_thread
+    if not ENABLED:
+        return False
+    stalled = _last_round and time.time() - _last_round > max(60, PROBE_TIMEOUT_S * 3)
+    if _probe_thread is not None and _probe_thread.is_alive() and not stalled:
+        return False
+    _probe_thread = threading.Thread(target=probe_loop, daemon=True, name="live-probe")
+    _probe_thread.start()
+    log.info("live probe (re)started")
+    return True
+
+
 def probe_loop():
     """Background thread: synthetic traffic to /authorize (also feeds the live charts)."""
-    global _uri
+    global _uri, _last_round
     if not ENABLED:
         return
+    me = threading.current_thread()
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, PROBE_PARALLEL))
-    while True:
+    while _probe_thread is None or _probe_thread is me:
+        _last_round = time.time()
         try:
             if not _uri:
                 _uri = get_service().get("uri", "")
             if _uri:
                 for s in pool.map(_probe_once, [f"{_uri}/authorize"] * PROBE_PARALLEL):
                     _samples.append(s)
-        except Exception as e:  # keep probing even if one round fails
+        except BaseException as e:  # keep probing even if one round fails
             log.warning("probe failed: %s", e)
         time.sleep(PROBE_INTERVAL_S)
 
@@ -223,12 +243,26 @@ def _require_enabled():
 
 @router.get("/status")
 def status():
-    return {"enabled": ENABLED, "project": PROJECT or None, "region": REGION, "service": SERVICE}
+    ensure_probe()
+    return {"enabled": ENABLED, "project": PROJECT or None, "region": REGION, "service": SERVICE,
+            "probe_running": bool(_probe_thread and _probe_thread.is_alive()),
+            "last_probe_round_s_ago": round(time.time() - _last_round, 1) if _last_round else None}
+
+
+@router.post("/probe/restart")
+def probe_restart():
+    """Manually restart the background traffic/probe."""
+    _require_enabled()
+    global _probe_thread
+    _probe_thread = None  # old loop exits after its current round
+    ensure_probe()
+    return {"probe": "restarted"}
 
 
 @router.get("/payment-svc")
 def payment_svc(fresh: bool = False):
     _require_enabled()
+    ensure_probe()
     if fresh:
         _cache.clear()
     try:
