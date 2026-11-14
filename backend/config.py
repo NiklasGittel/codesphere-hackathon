@@ -23,6 +23,9 @@ AGENT_MODE = os.getenv("AGENT_MODE", "gemini" if GEMINI_API_KEY else "mock")
 # If the real agent fails mid-demo, fall back to the scripted run
 AGENT_FALLBACK_TO_MOCK = os.getenv("AGENT_FALLBACK_TO_MOCK", "true").lower() == "true"
 AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "12"))
+# Hard limits so a slow/hanging model never blocks the demo (then: fallback)
+GEMINI_CALL_TIMEOUT_S = float(os.getenv("GEMINI_CALL_TIMEOUT_S", "20"))   # one model call
+AGENT_TOTAL_TIMEOUT_S = float(os.getenv("AGENT_TOTAL_TIMEOUT_S", "60"))   # whole Gemini run
 # Delay between scripted (mock) agent steps, in seconds
 MOCK_STEP_DELAY_S = float(os.getenv("MOCK_STEP_DELAY_S", "1.4"))
 
