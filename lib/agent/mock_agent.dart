@@ -17,6 +17,9 @@ class MockAgent implements AgentService {
   final _gemini = GeminiClient();
 
   @override
+  void reset() {}
+
+  @override
   Stream<AgentEvent> send(String message, {String? actionId}) async* {
     if (actionId != null) {
       yield* _action(actionId);

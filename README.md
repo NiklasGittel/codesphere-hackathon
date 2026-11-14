@@ -78,12 +78,18 @@ Agent → UI events: `StepStarted`, `StepCompleted`, `TextChunk`, `BlockEmitted`
 `variant`: `primary | secondary | outline | ghost | destructive`.
 `provider`: `aws | gcp | azure | codesphere`.
 
-## Next: Gemini
+## Agents
 
-Implement `GeminiAgent implements AgentService`:
-- tools such as `get_metrics`, `get_traces`, `get_costs`, `get_topology` read the mock data → emit `StepStarted`/`StepCompleted`
-- a `render_ui` tool with the schema above → `BlockEmitted(UiBlock.fromJson(args))`
-- streamed text → `TextChunk`
-- action button clicks come back as `send(label, actionId: id)`
+With `GEMINI_API_KEY` set, **`GeminiAgent`** (`lib/agent/gemini/`) answers everything:
 
-Then swap `MockAgent()` in `main.dart`. The mic button exposes `Composer.onMicToggle` for Gemini Live.
+- Gemini runs a function-calling loop (max 10 turns) with a system prompt in `prompt.dart`.
+- Data tools (`list_incidents`, `query_metric`, `get_latency_by_region`, `get_slow_trace`,
+  `get_business_impact`, `get_slo_status`, `forecast_revenue`, `get_costs`, ...) read the
+  simulated estate in `world.dart`. Each returns a compact summary for the model plus
+  ready-made visualizations addressed by `data_id`.
+- `show_data(data_id)` renders one of those visualizations, `render_ui(component_json)`
+  renders a component Gemini composes itself (brief, stats, finding, table, charts, actions, followups).
+- `execute_action` changes the simulated estate (e.g. rollback), so later answers reflect it.
+- Every tool call shows up as a step in the chat. Button clicks are sent to Gemini as messages.
+
+Without a key, or if the first Gemini call fails, the scripted `MockAgent` answers instead.

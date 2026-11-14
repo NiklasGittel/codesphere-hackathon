@@ -70,6 +70,7 @@ class ChatController extends ChangeNotifier {
   void reset() {
     if (_busy) _cancelled = true;
     messages.clear();
+    agent.reset();
     notifyListeners();
   }
 

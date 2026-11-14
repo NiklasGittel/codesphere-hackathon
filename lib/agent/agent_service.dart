@@ -39,4 +39,7 @@ class BlockEmitted extends AgentEvent {
 /// call to [BlockEmitted] via `UiBlock.fromJson(args)`.
 abstract class AgentService {
   Stream<AgentEvent> send(String message, {String? actionId});
+
+  /// Forget the conversation (new investigation).
+  void reset();
 }
